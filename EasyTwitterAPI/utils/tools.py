@@ -1,10 +1,9 @@
 import pandas as pd
 import datetime
-import time
 from datetime import datetime
 from dateutil import parser
 
-from utils.constants import Cte
+from EasyTwitterAPI.utils.constants import Cte
 def tweet_type(tweet):
     if 'retweeted_status' not in tweet:
         return Cte.TWEET

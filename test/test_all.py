@@ -1,7 +1,7 @@
 # %%
-from easy_twitter_api import EasyTwitterAPI
+from EasyTwitterAPI.easy_twitter_api import EasyTwitterAPI
 
-import utils.tools as utools
+import EasyTwitterAPI.utils.tools as utools
 import datetime
 import pandas as pd
 

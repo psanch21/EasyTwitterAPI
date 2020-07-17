@@ -18,6 +18,12 @@ Download or clone this repo and from the command line execute:
 pip install -r requirements.txt
 ```
 
+or 
+
+```
+python setup.py install
+```
+
 ## How to use this package?
 Easy, just 4 steps.
 

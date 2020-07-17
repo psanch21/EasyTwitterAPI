@@ -8,10 +8,10 @@ from TwitterAPI import TwitterError
 from dateutil import parser
 from pymongo import MongoClient
 
-from utils.constants import Cte
+from EasyTwitterAPI.utils.constants import Cte
 import twint
 
-import utils.tools as utools
+import EasyTwitterAPI.utils.tools as utools
 
 LIST_C = 'list'
 LIST_MEMBERS_C = 'list_members'
@@ -52,14 +52,14 @@ def print_user(user):
 class EasyTwitterAPI:
 
 
-    def __init__(self, cred_file):
+    def __init__(self, cred_file, db_name='easy_twitter_api'):
         consumer_key, consumer_secret, access_token, access_token_secret = get_credentials(cred_file)
 
         self._cache = True  # Use local data if available
 
         self.api = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
 
-        self.db = MongoClient('localhost', 27017).easy_twitter_api
+        self.db = MongoClient('localhost', 27017)[db_name]
 
 
     def activate_cache(self, value):
