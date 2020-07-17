@@ -33,7 +33,7 @@ EasyTwitterAPI assumes that a MongoDB instance is running on the default host an
 #### Step 1: Get your Twitter Developer credentials 
 
 Go to [Twitter Developer](https://developer.twitter.com/en) and get your credentials, both the free and paid version are valid.
-Then, save then in your favourite folder of your computer. As an example, I have save them in a json file 
+Then, save your credentials in your favourite folder of your computer. As an example, I have save them in a json file 
 called ```credentials.json``` that looks as follows
 
 ```
@@ -47,7 +47,7 @@ called ```credentials.json``` that looks as follows
 
 
 #### Step 2: Create the EasyTwitterAPI object
-The main object only has one parameter, the credential file of Step 1.
+The main object only has one required parameter, the credential file of Step 1.
 ```
 from easy_twitter_api import EasyTwitterAPI
 
