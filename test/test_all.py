@@ -53,7 +53,7 @@ members = scraper.get_members_of_list(list_id_str='741805883991035904', max_num=
 
 
 # %% Get replies to
-replies = scraper.search_replies_to(screen_name='yudapearl', from_screen_name='heikalkhan')
+replies = scraper.search_replies_to(screen_name='yudapearl', from_screen_name='fhuszar')
 
 
 
