@@ -6,14 +6,28 @@ from dateutil import parser
 from EasyTwitterAPI.utils.constants import Cte
 def tweet_type(tweet):
     if 'retweeted_status' not in tweet:
-        return Cte.TWEET
+        if tweet['in_reply_to_user_id_str'] is None:
+            return Cte.TWEET
+        else:
+            return Cte.ANSWER
 
     elif isinstance(tweet['retweeted_status'], dict) and len(tweet['retweeted_status']) > 0:
         return Cte.RETWEET
     else:
+        if tweet['in_reply_to_user_id_str'] is None:
+            return Cte.TWEET
+        else:
+            return Cte.ANSWER
+
+
+
+def tweet_type_twint(tweet):
+
+    if len(tweet['reply_to']) >1:
+        return Cte.ANSWER
+    else:
+
         return Cte.TWEET
-
-
 def tweet_creator(tweet):
     output = {}
     if 'retweeted_status' not in tweet:
@@ -58,5 +72,36 @@ def create_df_from_tweet_list(tweet_list):
     df['timestamp'] = df.apply(lambda x:
                                parser.parse(x['created_at']).timestamp(), axis=1)
     # df.sort_values(by='created_at', inplace=True)
+
+    return df
+
+
+def create_df_from_tweet_list_twint(tweet_list):
+    if len(tweet_list) == 0:
+
+        return pd.DataFrame(columns=['_id', 'contributors', 'coordinates', 'created_at', 'entities',
+       'favorite_count', 'favorited', 'geo', 'id', 'in_reply_to_screen_name',
+       'in_reply_to_status_id', 'in_reply_to_status_id_str',
+       'in_reply_to_user_id', 'in_reply_to_user_id_str', 'is_quote_status',
+       'lang', 'place', 'possibly_sensitive', 'quoted_status',
+       'quoted_status_id', 'quoted_status_id_str', 'retweet_count',
+       'retweeted', 'source', 'text', 'truncated', 'user', 'retweeted_status',
+       'extended_entities', 'datetime', 'type', 'tweet_user_id',
+       'tweet_user_id_str', 'tweet_screen_name', 'timestamp'])
+
+    df = pd.DataFrame.from_dict(tweet_list)
+    df.set_index(keys='id_str', inplace=True)
+
+    df = df.drop(columns=['datestamp', 'timestamp'])
+    df['timestamp'] = df.apply(lambda x: x['datetime']/1000, axis=1)
+    df['datetime'] = df.apply(lambda x:
+                              datetime.fromtimestamp(x['timestamp']), axis=1)
+
+    df = df.rename(columns={'tweet': 'text',
+                            'username': 'tweet_screen_name',
+                            'tweet_user_id': 'user_id',
+                            'tweet_user_id_str': 'user_id_str'})
+
+    df['type'] = df.apply(lambda x: tweet_type_twint(x), axis=1)
 
     return df
