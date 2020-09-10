@@ -10,6 +10,7 @@ from dateutil import parser
 from pymongo import MongoClient
 import random
 
+import pandas as pd
 
 import EasyTwitterAPI.utils.tools as utools
 from EasyTwitterAPI.utils.constants import Cte
@@ -669,7 +670,7 @@ class EasyTwitterAPI:
                 if not isinstance(u, list): u = [u]
                 user_list.extend(u)
 
-        return user_list
+        return pd.DataFrame.from_dict(user_list)
 
 
     def get_user(self, **args):
