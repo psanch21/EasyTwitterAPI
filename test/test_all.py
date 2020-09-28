@@ -6,7 +6,7 @@ import datetime
 import pandas as pd
 
 from datetime import datetime
-scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json')
+scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json', cred_file_premium='local/credentials_premium.json')
 
 scraper.info_db(full=True)
 
@@ -63,7 +63,13 @@ members = scraper.get_members_of_list(list_id_str='741805883991035904', max_num=
 
 # %% Get replies to
 scraper.activate_cache(False)
-replies = scraper.search_replies_to(screen_name='adamsconsulting', from_screen_name='MDameSMM', since=datetime.strptime('2019-08-01', '%Y-%m-%d'))
+replies = scraper.search_replies_to(screen_name='SchmidhuberAI', count=10)
+
+# %% Get replies to Premium API
+scraper.activate_cache(True)
+replies = scraper.search_replies_to_2(screen_name='SchmidhuberAI',
+                                      max_results=10,
+                                      fromDate=datetime.strptime('2020-01-01', '%Y-%m-%d'))
 
 
 

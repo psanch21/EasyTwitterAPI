@@ -45,6 +45,8 @@ def tweet_creator(tweet):
     return output
 
 
+
+
 def create_df_from_tweet_list(tweet_list):
     if len(tweet_list) == 0:
 
@@ -104,4 +106,59 @@ def create_df_from_tweet_list_twint(tweet_list):
 
     df['type'] = df.apply(lambda x: tweet_type_twint(x), axis=1)
 
+    return df
+
+
+
+def create_df_from_user_list(user_list):
+    if len(user_list) == 0:
+
+        return pd.DataFrame(columns=['_id', 'id_str', 'contributors_enabled', 'created_at',
+       'default_profile', 'default_profile_image', 'description', 'entities',
+       'favourites_count', 'follow_request_sent', 'followers_count',
+       'following', 'friends_count', 'geo_enabled', 'has_extended_profile',
+       'id', 'is_translation_enabled', 'is_translator', 'lang', 'listed_count',
+       'location', 'name', 'notifications', 'profile_background_color',
+       'profile_background_image_url', 'profile_background_image_url_https',
+       'profile_background_tile', 'profile_banner_url', 'profile_image_url',
+       'profile_image_url_https', 'profile_link_color',
+       'profile_sidebar_border_color', 'profile_sidebar_fill_color',
+       'profile_text_color', 'profile_use_background_image', 'protected',
+       'screen_name', 'status', 'statuses_count', 'time_zone',
+       'translator_type', 'url', 'utc_offset', 'verified'])
+
+    df = pd.DataFrame.from_dict(user_list)
+    df.set_index(keys='id_str', inplace=True)
+
+    return df
+
+
+
+
+def clean_tweet(tweet):
+
+    tweet_clean = { key: tweet[key] for key in ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str', 'in_reply_to_screen_name',
+                                           'text',   'quote_count', 'reply_count', 'retweet_count', 'favorite_count',  'lang']}
+
+    tweet_clean['datetime'] = datetime.fromtimestamp(parser.parse(tweet['created_at']).timestamp())
+    tweet_clean['type'] = tweet_type(tweet)
+    tweet_clean['tweet_user_id'] = tweet_creator(tweet)['id']
+    tweet_clean['tweet_user_id_str'] =tweet_creator(tweet)['id_str']
+    tweet_clean['tweet_user_screen_name'] = tweet_creator(tweet)['screen_name']
+
+    tweet_clean['timestamp'] = parser.parse(tweet['created_at']).timestamp()
+
+    return tweet_clean
+
+
+
+def create_df_from_cleaned_tweet_list(tweet_list):
+    if len(tweet_list) == 0:
+
+        return pd.DataFrame(columns= ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str', 'in_reply_to_screen_name',
+                                           'text',   'quote_count', 'reply_count', 'retweet_count', 'favorite_count',  'lang',
+                                      'datetime', 'type', 'tweet_user_id', 'tweet_user_id_str', 'tweet_user_screen_name', 'timestamp'])
+
+    df = pd.DataFrame.from_dict(tweet_list)
+    df.set_index(keys='id_str', inplace=True)
     return df
