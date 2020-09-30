@@ -6,11 +6,13 @@ import datetime
 import pandas as pd
 
 from datetime import datetime
-scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json', cred_file_premium='local/credentials_premium.json')
+scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json',
+                         db_name='twitter_API_v2',
+                         cred_file_premium='local/credentials_premium.json')
 
-scraper.info_db(full=True)
+scraper.info_db(full=False)
 
-scraper.activate_cache(False)
+scraper.activate_cache(True)
 # %% Get activity
 # scraper.activate_cache(False)
 df = scraper.get_user_activity_limited(screen_name='ryan73737347',  since=datetime.strptime('2019-09-01', '%Y-%m-%d'))
@@ -77,3 +79,25 @@ replies = scraper.search_replies_to_2(screen_name='SchmidhuberAI',
 
 my_data = scraper.load_cache_data(collection='user', filter_={}, find_one=False)
 df = pd.DataFrame.from_dict(my_data)
+
+
+ # %% Refractor
+import time
+names = [n for n in scraper.db.list_collection_names() if 'tweets_' in n]
+total_n = len(names)
+tic = time.time()
+for idx, collection_name in enumerate(names):
+    if idx % 10 ==0:
+        time_elapse = time.time() -tic
+        print(f'{idx}/{total_n} {time_elapse}')
+        tic =time.time()
+    df_tweets = pd.DataFrame.from_dict(scraper.load_cache_data(collection=collection_name))
+    if '_id' in df_tweets.columns: df_tweets.drop(columns=['_id'], inplace=True)
+    df = df_tweets.apply(lambda tweet: pd.Series(utools.refractor_tweet(tweet)), axis=1)
+
+    scraper.db.drop_collection(collection_name)
+    collection = scraper.db[collection_name]
+    collection.insert_many(list(df.T.to_dict().values()))
+
+
+
