@@ -67,11 +67,46 @@ class EasyTwitterAPI:
         self.pos_cred = 0
 
         self.api = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
+        self.api_premium = None
         if cred_file_premium:
             consumer_key, consumer_secret, access_token, access_token_secret = get_credentials(cred_file_premium)
             self.api_premium = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
 
         self.db = MongoClient('localhost', 27017)[db_name]
+
+
+        self.coll_names =  None
+        self.coll_tweets_names = None
+        self.coll_favs_names = None
+
+
+
+    def get_collection_names(self):
+        return self.db.list_collection_names()
+
+    def refresh_collection_names(self):
+        self.coll_names = self.get_collection_names()
+        self.coll_tweets_names = [n for n in self.coll_names if 'tweets_' in n]
+        self.coll_favs_names = [n for n in self.coll_names if 'favs_' in n]
+
+    def is_collected(self,what='activity',**args):
+        user_id_str = None
+        if 'user_id' in args:
+            user_id_str = args['user_id']
+        elif 'screen_name' in args:
+            user_id_str = self.get_user(screen_name=args['screen_name'])['id_str']
+        elif 'user' in args:
+            user_id_str = args['user']['id_str']
+        if what == 'activity':
+            return f'{TWEETS_U_C}{user_id_str}' in self.coll_tweets_names
+        elif what == 'favs':
+            return f'favs_{user_id_str}' in self.coll_favs_names
+
+
+
+
+
+
 
     def save_entry(self, data, id, collection):
 
@@ -151,9 +186,11 @@ class EasyTwitterAPI:
 
         self.api = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
 
-    def try_request(self, endpoint, query, max_tries=10, sleep=180, premium=True):
+    def try_request(self, endpoint, query, max_tries=7, sleep=180, premium=False):
         r = None
 
+        error_list = [Cte.RATE_LIMIT, Cte.OVERLOAD, Cte.INTERNAL_ERROR, Cte.FORBIDDEN]
+        error_list_not_handled = [Cte.UNAUTHORIZED, Cte.NOT_FOUND]
         while r is None:
             try:
                 r = self.api.request(endpoint, query) if not premium else self.api_premium.request(endpoint, query)
@@ -162,7 +199,7 @@ class EasyTwitterAPI:
                 time.sleep(10)
 
         tries = 0
-        while r.status_code in [Cte.RATE_LIMIT, Cte.OVERLOAD, Cte.INTERNAL_ERROR] and tries < max_tries:
+        while r.status_code in error_list and tries < max_tries:
             print(f'{tries} | Too many requests. Sleeping for a {sleep} seconds... | {datetime.datetime.now()}')
             time.sleep(sleep)
             print('AWAKE!')
@@ -174,8 +211,8 @@ class EasyTwitterAPI:
                 time.sleep(10)
             tries += 1
 
-        if r.status_code in [Cte.UNAUTHORIZED, Cte.NOT_FOUND]:
-            return r, False
+        if r.status_code in error_list_not_handled:
+            return None, False
 
         return r, tries < max_tries
 
@@ -309,6 +346,7 @@ class EasyTwitterAPI:
 
     def get_user_activity_limited(self, **args):
         return self._get_user_activity_type(endpoint='statuses/user_timeline',**args)
+
 
     def _get_user_activity_type(self,endpoint, **args):
 

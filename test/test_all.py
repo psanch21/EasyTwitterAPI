@@ -7,12 +7,15 @@ import pandas as pd
 
 from datetime import datetime
 scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json',
-                         db_name='twitter_API_v2',
+                         db_name='easy_twitter_api',
                          cred_file_premium='local/credentials_premium.json')
 
 scraper.info_db(full=False)
 
 scraper.activate_cache(True)
+scraper.refresh_collection_names()
+ # %%
+print(scraper.is_collected(what='activity', screen_name='yudapearl'))
 # %% Get activity
 # scraper.activate_cache(False)
 df = scraper.get_user_activity_limited(screen_name='ryan73737347',  since=datetime.strptime('2019-09-01', '%Y-%m-%d'))
@@ -29,7 +32,7 @@ df = scraper.get_user_activity(screen_name='elonmusk',
 twets = scraper.update_user_activity(screen_name='yudapearl')
 
 # %% Get favorites
-favorites = scraper.get_user_favorites(screen_name='RatnaSaiKosuru',  since=datetime.strptime('2019-09-01', '%Y-%m-%d'))
+favorites = scraper.get_user_favorites(screen_name='RatnaSaiKosuru')
 
 
 # %% Get user
@@ -65,11 +68,11 @@ members = scraper.get_members_of_list(list_id_str='741805883991035904', max_num=
 
 # %% Get replies to
 scraper.activate_cache(False)
-replies = scraper.search_replies_to(screen_name='SchmidhuberAI', count=10)
+replies = scraper.search_replies_to(screen_name='elonmusk', count=10)
 
 # %% Get replies to Premium API
-scraper.activate_cache(True)
-replies = scraper.search_replies_to_2(screen_name='SchmidhuberAI',
+scraper.activate_cache(False)
+replies = scraper.search_replies_to_2(screen_name='elonmusk',
                                       max_results=10,
                                       fromDate=datetime.strptime('2020-01-01', '%Y-%m-%d'))
 
