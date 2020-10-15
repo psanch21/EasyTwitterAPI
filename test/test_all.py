@@ -6,7 +6,7 @@ import datetime
 import pandas as pd
 
 from datetime import datetime
-scraper = EasyTwitterAPI(cred_file='local/credentials_tpp.json',
+scraper = EasyTwitterAPI(cred_file='local/credentials_jl1.json',
                          db_name='easy_twitter_api',
                          cred_file_premium='local/credentials_premium.json')
 
@@ -42,8 +42,9 @@ user  = scraper.get_user(screen_name=['yudapearl', 'goodfellow_ian'])
 
 
 # %% Get followees
-members = scraper.get_followees(screen_name='yudapearl', max_num=5000)
+members = scraper.get_followers(screen_name='IvaleraM', max_num=5000)
 
+members2 = scraper.get_many_users(user_id=members)
 
 # %% Get followers
 members = scraper.get_followers(screen_name='yudapearl', max_num=10000)
@@ -58,11 +59,15 @@ lists = scraper.get_lists_of_user(list_type='m', screen_name='yudapearl', max_nu
 
 
 # %% Get list
-l = scraper.get_list(list_id_str='1250703597429456902')
+l = scraper.get_list(list_id_str='1297261774270431233')
 
 
 # %% Get members of lists
-members = scraper.get_members_of_list(list_id_str='741805883991035904', max_num=100)
+members = scraper.get_members_of_list(list_id_str='1297261774270431233', max=200)
+
+# %% Get  full lists
+df_l = scraper.get_lists_of_user_full(list_type='m', screen_name='yudapearl')
+
 
 
 

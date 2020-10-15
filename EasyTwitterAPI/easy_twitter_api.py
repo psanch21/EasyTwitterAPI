@@ -53,7 +53,8 @@ def get_credentials(cred_file):
 def print_user(user):
     # print(' | '.join([f'{k}: {v}' for k, v in user.items() if k != 'lists_m']))
     print(
-        f"=> {user['screen_name']} | Tw: {user['statuses_count']} | Fav: {user['favourites_count']}  | L: {user['listed_count']} | Fr: {user['friends_count']}")
+        f"=> {user['screen_name']} | Tw: {user['statuses_count']} | Fav: {user['favourites_count']} "
+        f" | L: {user['listed_count']} | B: {user['friends_count']} | F: {user['followers_count']}")
 
 
 class EasyTwitterAPI:
@@ -212,7 +213,7 @@ class EasyTwitterAPI:
             tries += 1
 
         if r.status_code in error_list_not_handled:
-            return None, False
+            return r, False
 
         return r, tries < max_tries
 
@@ -610,8 +611,10 @@ class EasyTwitterAPI:
             user = args['user']
 
         max_num = args['max_num'] if 'max_num' in args else 1000000
+        str_format = args['str_format'] if 'str_format' in args else True
         cache = args['cache'] if 'cache' in args else self._cache
         username, user_id = user['screen_name'], str(user['id'])
+        true_count = user['friends_count'] if connection_type == Cte.FRIENDS else user['followers_count']
 
         print(f'Scraping {connection_type} of user {username} {user_id}')
 
@@ -622,11 +625,11 @@ class EasyTwitterAPI:
         data = data if data else {'id_str': user['id_str'], 'id_str_list': []}
 
         if cache and len(data['id_str_list']) > 0:
-            ids_list = data['id_str_list']
+            ids_list = [str(i) for i in data['id_str_list']] if str_format else data['id_str_list']
 
             print(f'Getting user {user_id} {connection_type} from cache')
             print(f'{len(ids_list)} {connection_type} for user {user_id}')
-            return ids_list
+            if len(ids_list) >=true_count: return ids_list
 
         request = True
         endpoint = f'{connection_type}/ids'
@@ -659,7 +662,8 @@ class EasyTwitterAPI:
                                                    {"$set": data},
                                                    upsert=True)
 
-        return data['id_str_list']  # list(users_collection.find({"id": {"$in": user[list_name]}}))
+        output = [str(i) for i in data['id_str_list']] if str_format else data['id_str_list']
+        return   output # list(users_collection.find({"id": {"$in": user[list_name]}}))
 
     def get_relationship(self, **args):
 
@@ -731,17 +735,47 @@ class EasyTwitterAPI:
         return rel_collection.find_one(find_query)
 
     # %% User profile
+    def tmp(self):
+        l_id_str_list = self.get_lists_of_user(list_type, **args)
+        if l_id_str_list is None: l_id_str_list = []
+        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        df_lists = pd.DataFrame.from_dict(cursor)
+        if len(df_lists) == len(l_id_str_list): return df_lists
+        l_remaining = set(l_id_str_list) - set(df_lists['id_str'].unique())
+        for id_str in list(l_remaining):
+            l = self.get_list(list_id_str=id_str)
+
+        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        df_lists = pd.DataFrame.from_dict(cursor)
+        assert len(df_lists) == len(l_id_str_list)
+
+        return df_lists
 
     def get_many_users(self, **args):
 
         drop = args['drop'] if 'drop' in args else True
         if 'screen_name' in args:
-            user_id_list = args['screen_name']
+            user_id_list_total = args['screen_name']
+            filter_={'screen_name': {'$in': user_id_list_total}}
 
         elif 'user_id' in args:
-            user_id_list = args['user_id']
+            user_id_list_total = [str(i) for i in args['user_id']]
+            filter_ = {'id_str': {'$in': user_id_list_total}}
+
+
+        user_list = list(self.load_cache_data(collection=USER_C, filter_=filter_))
+        if len(user_list) == len(user_id_list_total):
+            return  utools.create_df_from_user_list(user_list, drop=drop)
 
         user_list = []
+        df_users =  utools.create_df_from_user_list(user_list, drop=drop)
+
+        if 'screen_name' in args:
+            user_id_list = list(set(user_id_list_total)- set(df_users['screen_name'].unique()))
+
+        elif 'user_id' in args:
+            user_id_list = list(set(user_id_list_total)- set(df_users['id_str'].unique()))
+
 
         n_iter = np.ceil(len(user_id_list) / 100).astype(int)
 
@@ -754,7 +788,7 @@ class EasyTwitterAPI:
                 u = self.get_user(user_id=user_id_list[i * 100:(i + 1) * 100])
                 if not isinstance(u, list): u = [u]
                 user_list.extend(u)
-
+        user_list = list(self.load_cache_data(collection=USER_C, filter_=filter_))
         return utools.create_df_from_user_list(user_list, drop=drop)
 
     def get_user(self, **args):
@@ -862,6 +896,23 @@ class EasyTwitterAPI:
 
         return l
 
+
+    def get_lists_of_user_full(self, list_type, **args):
+        l_id_str_list = self.get_lists_of_user(list_type, **args)
+        if l_id_str_list is None: l_id_str_list = []
+        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        df_lists = pd.DataFrame.from_dict(cursor)
+        if len(df_lists) == len(l_id_str_list): return df_lists
+        l_remaining = set(l_id_str_list) - set(df_lists['id_str'].unique())
+        for id_str in list(l_remaining):
+            l = self.get_list(list_id_str=id_str)
+
+        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        df_lists = pd.DataFrame.from_dict(cursor)
+        assert len(df_lists) == len(l_id_str_list)
+
+        return df_lists
+
     def get_lists_of_user(self, list_type, **args):
         '''
         https://developer.twitter.com/en/docs/accounts-and-users/create-manage-lists/api-reference/get-lists-memberships
@@ -882,6 +933,8 @@ class EasyTwitterAPI:
             user = self.get_user(screen_name=args['screen_name'])
         elif 'user_id' in args:
             user = self.get_user(user_id=args['user_id'])
+        elif 'user' in args:
+            user = args['user']
 
         username, user_id = user['screen_name'], str(user['id'])
         print(f'Scraping Lists of {username} {user_id}')
