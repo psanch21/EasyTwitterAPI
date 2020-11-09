@@ -172,6 +172,17 @@ def clean_tweet(tweet):
 
 
 
+def create_df_list(list_list):
+    df = pd.DataFrame.from_dict(list_list)
+    if len(df) == 0:
+
+        return pd.DataFrame(columns= ['_id', 'id_str', 'created_at', 'description', 'following', 'full_name',
+       'id', 'member_count', 'mode', 'name', 'slug', 'subscriber_count', 'uri',
+       'user', 'datetime'])
+
+    df['datetime'] = df.apply(lambda  x: parser.parse(x['created_at']).replace(tzinfo=None), axis=1)
+    return df
+
 def create_df_from_cleaned_tweet_list(tweet_list):
     df = pd.DataFrame.from_dict(tweet_list)
     if len(df) == 0:

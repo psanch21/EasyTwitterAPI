@@ -7,34 +7,52 @@ import pandas as pd
 
 from datetime import datetime
 scraper = EasyTwitterAPI(cred_file='local/credentials_jl1.json',
-                         db_name='easy_twitter_api',
-                         cred_file_premium='local/credentials_premium.json')
+                         db_name='easy_twitter_api')
+
+
+scraper.set_cred_premium(
+                         cred_file_premium='local/credentials_premium_mje1.json',
+dev_label='awareness')
 
 scraper.info_db(full=False)
 
 scraper.activate_cache(True)
 scraper.refresh_collection_names()
+
+# %%
+df_tweets = scraper.get_user_activity_limited(screen_name='PetarV_93', max_num=10)
+
+# %%
+
+df_tweets = scraper.update_user_activity_premium(min_dt=datetime.strptime('2020-05-14', '%Y-%m-%d'),
+                                         screen_name='elonmusk')
+
+# %%
+
+df_tweets = scraper.update_user_activity(min_dt=datetime.strptime('2020-10-14', '%Y-%m-%d'),
+                                         screen_name='PetarV_93')
  # %%
 print(scraper.is_collected(what='activity', screen_name='yudapearl'))
 # %% Get activity
 # scraper.activate_cache(False)
-df = scraper.get_user_activity_limited(screen_name='ryan73737347',  since=datetime.strptime('2019-09-01', '%Y-%m-%d'))
-
+df = scraper.get_user_activity_limited(screen_name='fhuszar')
+twets = scraper.update_user_activity(min_dt=datetime.strptime('2020-10-14', '%Y-%m-%d'), screen_name='fhuszar')
 
 # %% Get activity with twint
 # scraper.activate_cache(False)
-df = scraper.get_user_activity(screen_name='elonmusk',
-                               since=datetime.strptime('2019-09-01', '%Y-%m-%d'),
-                               until=datetime.strptime('2020-03-01', '%Y-%m-%d'),)
+df = scraper.get_user_activity_limited(screen_name='elonmusk')
 
 
+df = scraper.update_user_activity()
 # %% Update activity
 twets = scraper.update_user_activity(screen_name='yudapearl')
 
 # %% Get favorites
-favorites = scraper.get_user_favorites(screen_name='RatnaSaiKosuru')
+favorites = scraper.get_user_favorites(screen_name='elonmusk')
 
 
+favorites = scraper.update_favorites(min_dt=datetime.strptime('2020-10-14', '%Y-%m-%d'),
+                                     screen_name='yudapearl')
 # %% Get user
 
 user  = scraper.get_user(screen_name=['yudapearl', 'goodfellow_ian'])
@@ -83,6 +101,12 @@ replies = scraper.search_replies_to_2(screen_name='elonmusk',
 
 
 
+# %%
+df_lists = scraper.update_lists_of_user(list_type='m', min_dt=datetime.strptime('2020-10-01', '%Y-%m-%d'), full=True,  screen_name='yudapearl')
+
+# %%
+
+df_lists = scraper.get_lists_of_user_full(list_type='m', screen_name='yudapearl', since=datetime.strptime('2020-10-01', '%Y-%m-%d'))
 # %% Load data
 
 my_data = scraper.load_cache_data(collection='user', filter_={}, find_one=False)
