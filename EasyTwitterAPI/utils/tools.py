@@ -153,6 +153,15 @@ def create_df_from_user_list(user_list, drop=True):
 #     return tweet_clean
 
 
+def clean_list(list_):
+    list_clean = list_.copy()
+    if 'user' in list_clean:
+        list_clean['user_id_str'] = list_clean['user']['id_str']
+        list_clean['user_screen_name'] = list_clean['user']['screen_name']
+        del list_clean['user']
+
+    return list_clean
+
 def clean_tweet(tweet):
 
     tweet_clean = { key: tweet[key] for key in ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str', 'in_reply_to_screen_name',

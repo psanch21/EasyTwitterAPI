@@ -818,7 +818,7 @@ class EasyTwitterAPI:
 
         if self._cache and list_:
             print(f"Getting List {list_['id_str']}  from cache")
-            return list_
+            return utools.clean_list(list_)
 
         endpoint = 'lists/show'
 
@@ -833,6 +833,7 @@ class EasyTwitterAPI:
 
             count = 0
             for i, l in enumerate(r):
+                l =  utools.clean_list(l)
                 tmp = lists_collection.find_one_and_update({'id_str': l['id_str']},
                                                            {"$set": l},
                                                            upsert=True)
@@ -848,6 +849,17 @@ class EasyTwitterAPI:
         print(f'{count_total_new} new List')
 
         return l
+
+
+    def refractor_list_collection(self):
+        lists = self.db[LIST_C].find({})
+        lists_db = pd.DataFrame.from_dict(lists)
+        lists_db = lists_db.apply(lambda list_: pd.Series(utools.clean_list(list_)), axis=1)
+        self.db.drop_collection(LIST_C)
+        collection = self.db[LIST_C]
+        collection.insert_many(list(lists_db.T.to_dict().values()))
+        return lists_db
+
 
 
     def get_lists_of_user_full(self, list_type, **args):

@@ -77,7 +77,7 @@ lists = scraper.get_lists_of_user(list_type='m', screen_name='yudapearl', max_nu
 
 
 # %% Get list
-l = scraper.get_list(list_id_str='1297261774270431233')
+l = scraper.get_list(list_id_str='1291218524808138752')
 
 
 # %% Get members of lists
