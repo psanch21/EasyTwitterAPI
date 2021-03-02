@@ -4,7 +4,34 @@ from datetime import datetime
 from dateutil import parser
 
 from EasyTwitterAPI.utils.constants import Cte
+
+import numpy as np
+
+def list_intersection(l1, l2):
+    out = list(set(l1) & set(l2))
+    if len(out) > 0:
+        my_type = type(out[0])
+        assert all(isinstance(x, my_type) for x in out)
+    return out
+
+def list_union(l1, l2):
+    out = list(set(l1) | set(l2))
+    if len(out) > 0:
+        my_type = type(out[0])
+        assert all(isinstance(x, my_type) for x in out)
+    return out
+
+def list_substract(l, l_substact):
+    out = list(set(l) -  set(l_substact))
+    if len(out) > 0:
+        my_type = type(out[0])
+        assert all(isinstance(x, my_type) for x in out)
+    return out
+
+
 def tweet_type(tweet):
+    if  'quoted_status' in tweet and isinstance(tweet['quoted_status'], dict):
+        return Cte.QTWEET
     if 'retweeted_status' not in tweet:
         if tweet['in_reply_to_user_id_str'] is None:
             return Cte.TWEET
@@ -30,6 +57,13 @@ def tweet_type_twint(tweet):
         return Cte.TWEET
 def tweet_creator(tweet):
     output = {}
+    if 'quoted_status' in tweet and isinstance(tweet['quoted_status'], dict):
+        qtweet = tweet['quoted_status']
+        output['id_str'] = qtweet['user']['id_str']
+        output['id'] = int(qtweet['user']['id'])
+        output['screen_name'] = qtweet['user']['screen_name']
+        return output
+
     if 'retweeted_status' not in tweet:
         output['id_str'] = tweet['user']['id_str']
         output['id'] = int(tweet['user']['id'])
@@ -153,20 +187,17 @@ def create_df_from_user_list(user_list, drop=True):
 #     return tweet_clean
 
 
-def clean_list(list_):
-    list_clean = list_.copy()
-    if 'user' in list_clean:
-        list_clean['user_id_str'] = list_clean['user']['id_str']
-        list_clean['user_screen_name'] = list_clean['user']['screen_name']
-        del list_clean['user']
-
-    return list_clean
 
 def clean_tweet(tweet):
 
     tweet_clean = { key: tweet[key] for key in ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str', 'in_reply_to_screen_name',
-                                           'text','retweet_count', 'favorite_count',  'lang']}
-
+                                           'retweet_count', 'favorite_count',  'lang']}
+    if 'full_text' in tweet.keys():
+        tweet_clean['text'] = tweet['full_text']
+    elif 'extended_tweet' in tweet.keys():
+        tweet_clean['text'] = tweet['extended_tweet']['full_text']
+    else:
+        tweet_clean['text'] = tweet['text']
     if 'quote_count' in tweet.keys(): tweet_clean['quote_count'] = tweet['quote_count']
     if 'reply_count' in tweet.keys(): tweet_clean['reply_count'] = tweet['reply_count']
     tweet_clean['datetime'] = datetime.fromtimestamp(parser.parse(tweet['created_at']).timestamp())
@@ -180,6 +211,19 @@ def clean_tweet(tweet):
     return tweet_clean
 
 
+def clean_list(list_):
+    list_clean = list_.copy()
+    user = None
+    if 'user' in list_clean:
+        user = list_clean['user'].copy()
+        list_clean['user_id_str'] = list_clean['user']['id_str']
+        list_clean['user_screen_name'] = list_clean['user']['screen_name']
+        del list_clean['user']
+
+    list_clean['created_at'] = parser.parse(list_clean['created_at']).replace(tzinfo=None)
+
+
+    return list_clean, user
 
 def create_df_list(list_list):
     df = pd.DataFrame.from_dict(list_list)
@@ -187,7 +231,7 @@ def create_df_list(list_list):
 
         return pd.DataFrame(columns= ['_id', 'id_str', 'created_at', 'description', 'following', 'full_name',
        'id', 'member_count', 'mode', 'name', 'slug', 'subscriber_count', 'uri',
-       'user', 'datetime'])
+       'user_id_str', 'user_screen_name', 'datetime'])
 
     df['datetime'] = df.apply(lambda  x: parser.parse(x['created_at']).replace(tzinfo=None), axis=1)
     return df

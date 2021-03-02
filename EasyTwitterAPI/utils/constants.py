@@ -10,6 +10,7 @@ class Cte:
     ANSWER = 'answer'
     TWEET = 'tweet'
     RETWEET = 'retweet'
+    QTWEET = 'qtweet'
     LIKE = 'like'
 
     RATE_LIMIT = 429
