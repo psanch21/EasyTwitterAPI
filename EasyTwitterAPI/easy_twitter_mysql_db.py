@@ -40,6 +40,11 @@ class EasyTwitterMySQLDB:
 
 
 
+    def create_database(self):
+        cursor = self.mydb.cursor()
+
+        cursor.execute("CREATE DATABASE twitter")
+        cursor.close()
 
 
     def create_tables(self):
@@ -49,14 +54,15 @@ class EasyTwitterMySQLDB:
         self.create_followees_table()
         self.create_lists_table()
         self.create_members_table()
+        self.create_topics_table()
+        self.create_topics_lists_table()
 
 
     def get_columns_table(self, table):
         if table == 'users':
             cols = self.cols_users.copy()
-            cols.append('last_modified')
+            # cols.append('last_modified')
             return cols
-
         elif table == 'lists':
             cols = self.cols_lists.copy()
             return cols
@@ -71,6 +77,14 @@ class EasyTwitterMySQLDB:
             return cols
         elif table == 'members':
             cols = self.cols_members.copy()
+            return cols
+        elif table == 'topics':
+            cols = self.cols_topics.copy()
+            return cols
+        elif table == 'topics_lists':
+            cols = self.cols_topics_lists.copy()
+            df_topics = self.select('topics')
+            cols.extend(list(df_topics['label']))
             return cols
         else:
             raise NotImplementedError
@@ -113,7 +127,12 @@ class EasyTwitterMySQLDB:
                             'lang': 'VARCHAR(8)',
                             'text': 'VARCHAR(1024)',
                             'type': 'VARCHAR(16)',
-                            'tweet_user_id_str': 'VARCHAR(64)'}
+                            'tweet_user_id_str': 'VARCHAR(64)',
+                'emojis': 'TINYINT',
+                'hashtags': 'TINYINT',
+                'urls': 'TINYINT',
+                'mentions': 'TINYINT',
+                'text_processed': 'VARCHAR(1024)'}
 
     def create_tweets_table(self):
         cursor = self.mydb.cursor()
@@ -164,7 +183,8 @@ class EasyTwitterMySQLDB:
                             'slug': 'VARCHAR(128)',
                             'full_name': 'VARCHAR(128)',
                             'created_at': 'DATETIME',
-                            'user_screen_name': 'VARCHAR(64)'}
+                            'user_screen_name': 'VARCHAR(64)',
+                            'text_processed': 'VARCHAR(1024)'}
     def create_lists_table(self):
         cursor = self.mydb.cursor()
 
@@ -193,7 +213,61 @@ class EasyTwitterMySQLDB:
         comm = create_table(name='members', cols_list=cols_list)
         cursor.execute(comm)
         cursor.close()
+    @property
+    def cols_topics(self):
+        return list(self._cols_topics.keys())
 
+    @property
+    def _cols_topics(self):
+        return {'label': 'VARCHAR(64) PRIMARY KEY',
+                'description': 'VARCHAR(1024)'}
+    def create_topics_table(self):
+        cursor = self.mydb.cursor()
+
+        cols_list = [f"{k} {v}" for k, v in self._cols_topics.items()]
+        comm = create_table(name='topics', cols_list=cols_list)
+        cursor.execute(comm)
+        cursor.close()
+
+    @property
+    def cols_topics_lists(self):
+        return list(self._cols_topics_lists.keys())
+
+    @property
+    def _cols_topics_lists(self):
+        return {'list_id_str':  'VARCHAR(64) PRIMARY KEY'}
+    def create_topics_lists_table(self):
+        cursor = self.mydb.cursor()
+
+        cols_list = [f"{k} {v}" for k, v in self._cols_topics_lists.items()]
+        cols_list.append('FOREIGN KEY (list_id_str) REFERENCES lists(id_str)')
+
+        comm = create_table(name='topics_lists', cols_list=cols_list)
+        cursor.execute(comm)
+        cursor.close()
+
+        df_t = self.select('topics')
+        label_list = list(df_t['label'])
+        for label in label_list:
+            self.add_column('topics_lists', label, 'TINYINT DEFAULT -1')
+
+    @property
+    def cols_walls_collected(self):
+        return list(self._cols_walls_collected.keys())
+
+    @property
+    def _cols_walls_collected(self):
+        return {'user_id_str':  'VARCHAR(64) PRIMARY KEY',
+                'is_collected':  'TINYINT'}
+    def create_walls_collected_table(self):
+        cursor = self.mydb.cursor()
+
+        cols_list = [f"{k} {v}" for k, v in self._cols_walls_collected.items()]
+        cols_list.append('FOREIGN KEY (user_id_str) REFERENCES users(id_str)')
+
+        comm = create_table(name='walls_collected', cols_list=cols_list)
+        cursor.execute(comm)
+        cursor.close()
     def drop_table(self, table_name):
         drop_table_query = f"DROP TABLE {table_name}"
         cursor = self.mydb.cursor()
@@ -207,7 +281,30 @@ class EasyTwitterMySQLDB:
         cursor.execute(query)
 
         cursor.close()
+    def add_column(self, table_name, column_name, column_type):
+        query = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+        cursor = self.mydb.cursor()
+        cursor.execute(query)
 
+        cursor.close()
+
+
+
+    def insert_update(self, table_name, cols_list, values):
+        cursor = self.mydb.cursor()
+        cols_str = ', '.join(cols_list)
+        values_str = ', '.join([ str(v) for v in values])
+
+        set_str = ', '.join([f"{c}=%s" for c in cols_list[1:]])
+
+
+        comm = f"INSERT INTO {table_name} ({cols_str}) VALUES({values_str}) ON DUPLICATE KEY UPDATE {set_str}"
+
+        cursor.execute(comm, tuple(values[1:]))
+        self.mydb.commit()
+        print(f'{table_name} ', cursor.rowcount, "record inserted/updated.")
+
+        cursor.close()
     def insert(self, table, cols_list, val_list, ignore=False):
         cursor = self.mydb.cursor()
         cols_str = ','.join(cols_list)
@@ -250,22 +347,14 @@ class EasyTwitterMySQLDB:
         elif filter_id == 'EQ':
             value = filter_params['value']
             return  f"{filter_params['col']}=%s", [value]
-        elif filter_id == '>': #Greater
+        elif filter_id in ['>', '<', '>=', '<=', '<>']:
             value = filter_params['value']
-            return f"{filter_params['col']}>%s", [value]
-        elif filter_id == '>=':  # Greater
-            value = filter_params['value']
-            return f"{filter_params['col']}>=%s", [value]
-        elif filter_id == '<': #Smaller
-            value = filter_params['value']
-            return f"{filter_params['col']}<%s", [value]
-        elif filter_id == '<=': #Smaller
-            value = filter_params['value']
-            return f"{filter_params['col']}<=%s", [value]
+            return  f"{filter_params['col']}{filter_id}%s", [value]
 
     def select(self, table, filter_dict=None, filter_concat=None, columns=None, only_one=False):
         cursor = self.mydb.cursor()
-        columns = ', '.join(columns) if isinstance(columns, list) else '*'
+        columns = ', '.join(columns  if isinstance(columns, list) else self.get_columns_table(table))
+
         comm = f"SELECT {columns} FROM {table}"
 
         if isinstance(filter_dict, dict):

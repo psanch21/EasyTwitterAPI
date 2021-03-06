@@ -1,8 +1,12 @@
-import json
-import pickle
-import numpy as np
-import EasyTwitterAPI.utils.tools as utools
+import os
 from datetime import timedelta
+
+import neattext as nt
+import networkx as nx
+import numpy as np
+import pandas as pd
+
+import EasyTwitterAPI.utils.tools as utools
 
 
 class EasyTwitterManager:
@@ -64,11 +68,12 @@ class EasyTwitterManager:
         batches = int(np.ceil(len(id_str_list) / 100))
         user_list_all = []
         for i in range(batches):
-            user_list = self.scraper.get_user(user_id=id_str_list[i*100:(i+1)*100])
+            user_list = self.scraper.get_user(user_id=id_str_list[i * 100:(i + 1) * 100])
             user_list = user_list if isinstance(user_list, list) else [user_list]
             user_list_all.extend(user_list)
         entries = []
         for user in user_list_all:
+            if user is None: continue
             user_t = tuple([user[t] for t in self.db.cols_users])
 
             entries.append(user_t)
@@ -82,7 +87,8 @@ class EasyTwitterManager:
                                               })
         return df_user
 
-    def scrape_user_activity(self, user, ignore=False, favs=False):
+    def scrape_user_activity(self, user, ignore=False, favs=False, since='2020-08-01'):
+        assert user is not None
         table = 'favs' if favs else 'tweets'
         if self.use_cache:
             tweets = self.db.select(table,
@@ -95,9 +101,9 @@ class EasyTwitterManager:
                 return tweets
 
         if favs:
-            df_tweets, users_in_tweets = self.scraper.get_user_favorites(user=user)
+            df_tweets, users_in_tweets = self.scraper.get_user_favorites(user=user, since=since)
         else:
-            df_tweets, users_in_tweets = self.scraper.get_user_activity_limited(user=user)
+            df_tweets, users_in_tweets = self.scraper.get_user_activity_limited(user=user, since=since)
 
         entries = []
         for id_str_tmp, user_tmp in users_in_tweets.items():
@@ -129,8 +135,7 @@ class EasyTwitterManager:
                                 )
         return tweets
 
-
-    def scrape_user_followees(self, user):
+    def scrape_user_followees(self, user, ignore=False, max_num=5000):
         if self.use_cache:
             followees = self.db.select('followees',
                                        filter_dict={'EQ': {'col': 'user_id_str',
@@ -141,13 +146,14 @@ class EasyTwitterManager:
 
                 return list(followees['fol_id_str'])
 
-        followees_list = self.scraper.get_followees(user=user)
+        followees_list = self.scraper.get_followees(user=user, max_num=max_num)
 
         entries = [(user['id_str'], fol) for fol in followees_list]
 
         self.db.insert(table='followees',
                        cols_list=self.db.cols_followees,
-                       val_list=entries)
+                       val_list=entries,
+                       ignore=ignore)
 
         return followees_list
 
@@ -166,9 +172,9 @@ class EasyTwitterManager:
         my_list['created_at'] = my_list['created_at'].strftime('%Y-%m-%d %H:%M:%S')
 
         user_cache = self.db.select('users',
-                              filter_dict={'EQ': {'col': 'id_str',
-                                                  'value':  user['id_str']}},
-                              only_one=True)
+                                    filter_dict={'EQ': {'col': 'id_str',
+                                                        'value': user['id_str']}},
+                                    only_one=True)
         if user_cache is None:
             user = tuple([user[t] for t in self.db.cols_users])
             self.db.insert(table='users',
@@ -213,9 +219,7 @@ class EasyTwitterManager:
                        val_list=entries,
                        ignore=True)
 
-
-        return [user['id_str'] for user  in members]
-
+        return [user['id_str'] for user in members]
 
     def scrape_lists_of_user(self, user, list_type='m', max_num=100):
         assert list_type == 'm', 'Only mode implemented'
@@ -224,10 +228,10 @@ class EasyTwitterManager:
         max_num = min(max_num, user['listed_count'])
         if self.use_cache:
             lists = self.db.select('members',
-                                     filter_dict={'EQ': {'col': 'user_id_str',
-                                                         'value': user['id_str']}})
+                                   filter_dict={'EQ': {'col': 'user_id_str',
+                                                       'value': user['id_str']}})
 
-            if lists is not None and len(lists) >=max_num:
+            if lists is not None and len(lists) >= max_num:
                 print(f"Getting lists of  {user['id_str']} from cache")
 
                 return list(lists['list_id_str'])
@@ -235,7 +239,6 @@ class EasyTwitterManager:
         lists, creators = self.scraper.get_lists_of_user(list_type=list_type,
                                                          user=user,
                                                          max_num=max_num)
-
 
         # Add creators of the Lists
         entries = []
@@ -271,43 +274,80 @@ class EasyTwitterManager:
 
     def scrape_wall(self, user_id_str):
         seeker = self.scrape_user(id_str=user_id_str)
-        tweets = self.scrape_user_activity(seeker)
-        tweets = self.scrape_user_activity(seeker, favs=True)
+        if seeker is None:
+            return False
+        tweets = self.scrape_user_activity(seeker, ignore=True)
 
-        favs = self.scrape_user_activity(seeker, favs=True)
-        followees = self.scrape_user_followees(seeker)
+        favs = self.scrape_user_activity(seeker, favs=True, ignore=True)
+        followees = self.scrape_user_followees(seeker, ignore=True)
         # %%
         df_foll = self.scrape_many_users(id_str_list=followees)
         # %%
-
+        df_foll = df_foll.sample(frac=1.0)
         for _, fol in df_foll.iterrows():
             if fol['protected'] == '1': continue
-            friends_fol = self.scrape_user_followees(fol)
             if fol['statuses_count'] > 0:
-                tweets = self.scrape_user_activity(fol)
+                tweets = self.scrape_user_activity(fol, ignore=True)
 
+        return True
+    def add_topic(self, label, word_list):
+        word_str = '___'.join(word_list)
+        self.db.insert(table='topics',
+                       cols_list=self.db.cols_topics,
+                       val_list=tuple([label, word_str]))
+
+        self.db.add_column('topics_lists', label, 'TINYINT DEFAULT -1')
+
+    def add_topic_to_lists(self, topic_label):
+        df_lists = self.db.select('lists')
+        if self.use_cache:
+            df_tl = self.db.select('topics_lists',
+                                   filter_dict={'<>': {'col': topic_label,
+                                                       'value': -1}
+                                                })
+            if df_tl is not None and len(df_tl) > 0:
+                list_id_str_cache = list(df_tl['list_id_str'].unique())
+
+                list_id_str = utools.list_substract(df_lists['id_str'].unique(), list_id_str_cache)
+                df_lists = df_lists[df_lists.id_str.isin(list_id_str)]
+
+        df_topics = self.db.select('topics')
+        topic_words = df_topics[df_topics.label == topic_label].iloc[0]['description'].split('___')
+
+        cols_list = ['list_id_str', topic_label]
+        for _, my_list in df_lists.iterrows():
+            text_processed = my_list['text_processed']
+            is_in_topic = 0
+            for word in topic_words:
+
+                if word in my_list['text_processed']:
+                    print(f"\n[{topic_label}] Text: {text_processed}")
+                    is_in_topic = 1
+                    break
+
+            self.db.insert_update('topics_lists', cols_list, values=[my_list['id_str'], is_in_topic])
 
     def get_user_activity(self, user_id_str, init_dt, end_dt, favs=False):
         table = 'favs' if favs else 'tweets'
 
-        init_dt =init_dt.strftime("%Y-%m-%d %H:%M:%S")
-        end_dt =end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        init_dt = init_dt.strftime("%Y-%m-%d %H:%M:%S")
+        end_dt = end_dt.strftime("%Y-%m-%d %H:%M:%S")
         df_activity = self.db.select(table,
-                                 filter_dict={'EQ': {'col': 'user_id_str',
-                                                     'value': user_id_str},
-                                              '>=': {'col': 'datetime',
-                                                     'value': init_dt},
-                                              '<=': {'col': 'datetime',
-                                                     'value': end_dt}
-                                              })
+                                     filter_dict={'EQ': {'col': 'user_id_str',
+                                                         'value': user_id_str},
+                                                  '>=': {'col': 'datetime',
+                                                         'value': init_dt},
+                                                  '<=': {'col': 'datetime',
+                                                         'value': end_dt}
+                                                  })
         return df_activity
 
     def get_wall_from_db(self, user_id_str, init_dt, end_dt):
         user = self.scrape_user(id_str=user_id_str)
         user_list = self.scrape_user_followees(user)
 
-        init_dt =init_dt.strftime("%Y-%m-%d %H:%M:%S")
-        end_dt =end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        init_dt = init_dt.strftime("%Y-%m-%d %H:%M:%S")
+        end_dt = end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         df_wall = self.db.select('tweets',
                                  filter_dict={'IN': {'col': 'user_id_str',
@@ -319,10 +359,9 @@ class EasyTwitterManager:
                                               })
 
         df_wall = df_wall[~df_wall.tweet_user_id_str.eq(user_id_str)]
-        return df_wall[~df_wall.type.eq('Answer')]
+        return df_wall[~df_wall.type.eq('answer')]
 
-
-    def save_wall_G(self, list_id_str, T=30, L=10, Q=0, sigma=8):
+    def get_wall_G(self, root, list_id_str, T=30, L=10, Q=0, sigma=8, use_followees=False):
         '''
 
         :param list_id_str:
@@ -334,87 +373,172 @@ class EasyTwitterManager:
         :return:
         '''
 
+        assert Q == 0
+
+        # Get the List and the  Seeker
         my_list = self.scrape_list(list_id_str=list_id_str)
+        seeker = self.scrape_user(id_str=my_list['user_id_str'])
+        user_dir = os.path.join(root, f'{T}_{L}_{Q}_{sigma}', 'raw', my_list['user_id_str'])
+        os.makedirs(user_dir, exist_ok=True)
+        G_file = os.path.join(user_dir, f'G_{list_id_str}.pkl')
+        if self.use_cache and os.path.exists(G_file):
+            print(f'Getting wall from cache: {G_file}')
+            G = utools.load_obj(G_file)
+            return G, True
+        # Set init and end time of wall
         end_dt = my_list['created_at']
         init_dt = end_dt - timedelta(days=T)
-        self.scrape_wall(user_id_str=my_list['user_id_str'])
+
+        # Get the wall
+        success = self.scrape_wall(user_id_str=my_list['user_id_str'])
+        if not success:
+            print('\n ERROR SCRAPING THE WALL')
+            return None, True
         df_wall = self.get_wall_from_db(my_list['user_id_str'],
-                                           init_dt=init_dt,
-                                           end_dt=end_dt
-                                           )
+                                        init_dt=init_dt,
+                                        end_dt=end_dt
+                                        )
 
         print(f"\nMin datetime: {df_wall['datetime'].min()}")
         print(f"Max datetime: {df_wall['datetime'].max()}\n")
+
+        # Create the graph to store the wall and add the nodes
+        G = nx.DiGraph()
+        G.add_node(my_list['user_id_str'])
+        G.add_nodes_from(list(df_wall['tweet_user_id_str'].unique()))
+
+        # Get the users' information
+        all_user_id_str_list = list(G.nodes())
+        df_users = self.scrape_many_users(all_user_id_str_list)
+        if len(df_users) != len(G.nodes()):
+            id_str_1 = list(df_users['id_str'].unique())
+            id_str_2 = list(G.nodes())
+            print(utools.list_substract(id_str_2, id_str_1))
+            # assert False
+
+        # %% Add Follow edges
+
+        if not use_followees:
+
+            followees = self.scrape_user_followees(seeker)
+            fol_in_wall = utools.list_intersection(all_user_id_str_list, followees)
+            for fol in fol_in_wall:
+                G.add_edge(seeker['id_str'], fol, follow=1)
+        else:
+            for _, u in df_users.iterrows():
+                if u['friends_count'] == 0: continue
+                followees = self.scrape_user_followees(u)
+                fol_in_wall = utools.list_intersection(all_user_id_str_list, followees)
+                for fol in fol_in_wall:
+                    G.add_edge(u['id_str'], fol, follow=1)
+        # %% Compute average number of times online at the same time
+
         df_t_seeker = self.get_user_activity(my_list['user_id_str'], init_dt, end_dt)
         df_l_seeker = self.get_user_activity(my_list['user_id_str'], init_dt, end_dt, favs=True)
         num_posts_seeker = len(df_t_seeker) + len(df_l_seeker)
 
-        # Get times at which the sxeeker is active in minutes  timestamp in minutes
+        print(f"Number of posts of seeker: {num_posts_seeker}")
+
         seeker_dt_list = []
 
-        seeker_dt_list.extend(list(df_t_seeker['datetime'].map(lambda x: x.timestamp())/60))
-        seeker_dt_list.extend(list(df_l_seeker['datetime'].map(lambda x: x.timestamp())/60))
-        seeker_dt = np.array(seeker_dt_list)
+        if len(df_t_seeker) > 0:
+            seeker_dt_list.extend(list(df_t_seeker['datetime'].map(lambda x: x.timestamp()) / 60))
+        if len(df_l_seeker) > 0:
+            seeker_dt_list.extend(list(df_l_seeker['datetime'].map(lambda x: x.timestamp()) / 60))
+        G.nodes[seeker['id_str']]['dt_online'] = np.array(seeker_dt_list)
 
-        # Get type of user for all users in the wall
-        users_in_wall= [my_list['user_id_str']]
-        users_in_wall.extend(list(df_wall['tweet_user_id_str'].unique()))
-        users_in_wall = list(set(users_in_wall))
-        df_users = self.scrape_many_users(id_str_list=users_in_wall)
-        print(f' Number of unique users within the wall: {len(df_users)}')
+        for u_id_str, df_a in df_wall.groupby('tweet_user_id_str'):
+            df_online = []
+            if len(df_a) > 0:
+                df_online = list(df_a['datetime'].map(lambda x: x.timestamp()) / 60)
+            G.nodes[u_id_str]['dt_online'] = np.array(df_online)
+
+        for id_str_i in all_user_id_str_list:
+            for id_str_j in all_user_id_str_list:
+                if id_str_i == id_str_j: continue
+
+                dt_i = G.nodes[id_str_i]['dt_online']
+                dt_j = G.nodes[id_str_j]['dt_online']
+
+                diff_dt = dt_i[:, np.newaxis] - dt_j
+                avg_num_online = np.sum(np.exp(-diff_dt ** 2 / sigma))
+
+                if avg_num_online >= 1:
+                    G.add_edge(id_str_i, id_str_j, avg_vis_tweets=avg_num_online)
+
+        # %% Compute retweet, qtweets interactions
+
+        for u_id_str, df_a in df_wall.groupby('user_id_str'):
+            for i in ['qtweet', 'retweet']:
+                df_i = df_a[df_a.type == i]
+                for u_i, df_u_i in df_i.groupby('tweet_user_id_str'):
+                    my_dict = {i: len(df_u_i)}
+                    G.add_edge(u_id_str, u_i, **my_dict)
+
+        # Qtweets, retweets and answers for the seeker
+        for i in ['qtweet', 'retweet', 'answer']:
+            df_i = df_t_seeker[df_t_seeker.type == i]
+            for u_i, df_u_i in df_i.groupby('tweet_user_id_str'):
+                my_dict = {i: len(df_u_i)}
+                G.add_edge(seeker['id_str'], u_i, **my_dict)
+
+        # Likes for the seeker
+        for u_i, df_u_i in df_l_seeker.groupby('tweet_user_id_str'):
+            my_dict = {'like': len(df_u_i)}
+            G.add_edge(seeker['id_str'], u_i, **my_dict)
+        # %% Add node attributtres
+
+        for user_id_str, df_u in df_wall.groupby('tweet_user_id_str'):
+            G.nodes[user_id_str]['rate_total'] = len(df_u) / T
+
         df_users['type'] = 'User'
-        seeker = df_users[df_users.id_str.eq(my_list['user_id_str'])]
-        assert len(seeker) == 1
-        df_users.loc[seeker.index, 'type'] = 'Seeker'
-        df_users.loc[seeker.index, 'rate_total'] = num_posts_seeker/T
 
-
-        #
-        if Q > 0:
-            for _, user in df_users.iterrows():
-                if user['listed_count'] < L: continue
-                lists = self.scrape_lists_of_user(user)
-        else:
-            df_users.loc[df_users.listed_count >= L, 'type'] = 'Expert'
+        df_users.loc[df_users.listed_count >= L, 'type'] = 'Expert'
 
         members = self.scrape_list_members(list_id_str)
 
         df_users.loc[df_users.id_str.isin(members), 'type'] = 'Member'
 
-        # Compute rate of tweets in the given interval.
-        # For each user, How many tweets per day appear in the wall?
+        for _, u in df_users.iterrows():
+            u_dict = u.to_dict()
 
-        for user_id_str, df_u in df_wall.groupby('tweet_user_id_str'):
-            rate = len(df_u) / T  # Tweets/day
-            df_users.loc[df_users.id_str.eq(user_id_str), 'rate_total'] = len(df_u) / T
+            del u_dict['id']
+            del u_dict['name']
+            del u_dict['screen_name']
+            del u_dict['description']
+            del u_dict['url']
+            del u_dict['protected']
+            del u_dict['created_at']
+            del u_dict['geo_enabled']
+            del u_dict['profile_image_url']
 
-        interactions_dict = {}
+            G.add_node(u['id_str'], **u_dict)
 
-        for id_str_i in users_in_wall:
-            for id_str_j in users_in_wall:
-                if id_str_i == id_str_j: continue
-                id_ = (id_str_i, id_str_j)
-                if id_str_i == my_list['user_id_str']:
-                    dt_i = seeker_dt
-                else:
-                    df_i = df_wall[df_wall.tweet_user_id_str.eq(id_str_i)]
-                    dt_i = list(df_i['datetime'].map(lambda x: x.timestamp())/60)
+        G.nodes[seeker['id_str']]['type'] = 'Seeker'
+        G.nodes[seeker['id_str']]['rate_total'] = num_posts_seeker / T
 
-                if id_str_j == my_list['user_id_str']:
-                    dt_j = seeker_dt
-                else:
-                    df_j = df_wall[df_wall.tweet_user_id_str.eq(id_str_j)]
-                    dt_j = list(df_j['datetime'].map(lambda x: x.timestamp())/60)
+        # %% Add node attributes based on wall. Rate (events/tweet) of emojis, url, ...
 
-                diff_dt = dt_i[:,np.newaxis] - dt_j
-                avg_vis_tweets = np.sum(np.exp(-diff_dt**2/sigma))
+        all_nodes = list(G.nodes())
+        for u_id_str, df_u in df_wall.groupby('tweet_user_id_str'):
+            if u_id_str not in all_nodes: continue
+            G.nodes[u_id_str]['emojis_rate'] = np.sum(df_u['emojis']) / len(df_u)
+            G.nodes[u_id_str]['hashtags_rate'] = np.sum(df_u['hashtags']) / len(df_u)
+            G.nodes[u_id_str]['urls_rate'] = np.sum(df_u['urls']) / len(df_u)
+            G.nodes[u_id_str]['mentions_rate'] = np.sum(df_u['mentions']) / len(df_u)
+            docx = nt.TextFrame(text=' '.join(list(df_u['text_processed'].values)))
 
-                if avg_vis_tweets >=1:
-                    if id_ not in interactions_dict: interactions_dict[id_] = {}
-                    interactions_dict[id_]['avg_vis_tweets'] = avg_vis_tweets
+            G.nodes[u_id_str]['bow'] = docx.bow()
 
+        df_u = pd.concat([df_l_seeker, df_t_seeker])
+        G.nodes[seeker['id_str']]['emojis_rate'] = np.sum(df_u['emojis']) / len(df_u)
+        G.nodes[seeker['id_str']]['hashtags_rate'] = np.sum(df_u['hashtags']) / len(df_u)
+        G.nodes[seeker['id_str']]['urls_rate'] = np.sum(df_u['urls']) / len(df_u)
+        G.nodes[seeker['id_str']]['mentions_rate'] = np.sum(df_u['mentions']) / len(df_u)
+        docx = nt.TextFrame(text=' '.join(list(df_u['text_processed'].values)))
 
-)
+        G.nodes[seeker['id_str']]['bow'] = docx.bow()
 
-        return
+        utools.save_obj(G_file, G)
 
+        return G, False

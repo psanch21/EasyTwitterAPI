@@ -206,7 +206,14 @@ class EasyTwitterAPI:
             count = min(count, max_num)
         else:
             max_num = min(3600, user[tmp])
-        since = args['since'] if 'since' in args else datetime.datetime.strptime('2006-01-01', '%Y-%m-%d')
+        if 'since' in args:
+            if isinstance(args['since'], str):
+                since = datetime.datetime.strptime(args['since'], '%Y-%m-%d')
+            else:
+                since = args['since']
+        else:
+            since = datetime.datetime.strptime('2006-01-01', '%Y-%m-%d')
+
         until = args['until'] if 'until' in args else datetime.datetime.now()
 
 
@@ -306,7 +313,7 @@ class EasyTwitterAPI:
 
 
 
-        max_num = args['max_num'] if 'max_num' in args else 1000000
+        max_num = args['max_num'] if 'max_num' in args else 100000
         str_format = args['str_format'] if 'str_format' in args else True
         username, user_id = user['screen_name'], user['id']
 
@@ -515,7 +522,7 @@ class EasyTwitterAPI:
         while request:
 
             r, success = self.try_request(endpoint, query)
-            if not success: return None
+            if not success: return None, None
 
             count = 0
             for i, l in enumerate(r):
