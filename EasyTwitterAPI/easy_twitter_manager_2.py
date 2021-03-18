@@ -169,6 +169,8 @@ class EasyTwitterManager:
                 return my_list
 
         my_list, user = self.scraper.get_list(list_id_str=list_id_str)
+        if my_list is None:
+            return None
         my_list['created_at'] = my_list['created_at'].strftime('%Y-%m-%d %H:%M:%S')
 
         user_cache = self.db.select('users',
@@ -406,21 +408,39 @@ class EasyTwitterManager:
         G = nx.DiGraph()
         G.add_node(my_list['user_id_str'])
         G.add_nodes_from(list(df_wall['tweet_user_id_str'].unique()))
+        members = self.scrape_list_members(list_id_str)
+        if len(members) < my_list['member_count']:
+            self.activate_cache(False)
+            members = self.scrape_list_members(list_id_str)
+            self.activate_cache(True)
+
+        G.add_nodes_from(members)
+
 
         # Get the users' information
         all_user_id_str_list = list(G.nodes())
         df_users = self.scrape_many_users(all_user_id_str_list)
+        if len(df_users) < len(G.nodes()):
+            self.activate_cache(False)
+            df_users = self.scrape_many_users(all_user_id_str_list)
+            self.activate_cache(True)
+
         if len(df_users) != len(G.nodes()):
             id_str_1 = list(df_users['id_str'].unique())
             id_str_2 = list(G.nodes())
             print(utools.list_substract(id_str_2, id_str_1))
-            # assert False
+            assert False
 
         # %% Add Follow edges
 
         if not use_followees:
 
             followees = self.scrape_user_followees(seeker)
+            if len(followees) < int(seeker['friends_count']):
+                self.activate_cache(False)
+                followees = self.scrape_user_followees(seeker)
+                self.activate_cache(True)
+
             fol_in_wall = utools.list_intersection(all_user_id_str_list, followees)
             for fol in fol_in_wall:
                 G.add_edge(seeker['id_str'], fol, follow=1)
@@ -455,7 +475,10 @@ class EasyTwitterManager:
 
         for id_str_i in all_user_id_str_list:
             for id_str_j in all_user_id_str_list:
+                if 'dt_online' not in G.nodes[id_str_i]: continue
                 if id_str_i == id_str_j: continue
+
+                if 'dt_online' not in G.nodes[id_str_j]: continue
 
                 dt_i = G.nodes[id_str_i]['dt_online']
                 dt_j = G.nodes[id_str_j]['dt_online']
@@ -472,20 +495,26 @@ class EasyTwitterManager:
             for i in ['qtweet', 'retweet']:
                 df_i = df_a[df_a.type == i]
                 for u_i, df_u_i in df_i.groupby('tweet_user_id_str'):
+                    if u_i not in all_user_id_str_list: continue
                     my_dict = {i: len(df_u_i)}
                     G.add_edge(u_id_str, u_i, **my_dict)
 
         # Qtweets, retweets and answers for the seeker
-        for i in ['qtweet', 'retweet', 'answer']:
-            df_i = df_t_seeker[df_t_seeker.type == i]
-            for u_i, df_u_i in df_i.groupby('tweet_user_id_str'):
-                my_dict = {i: len(df_u_i)}
-                G.add_edge(seeker['id_str'], u_i, **my_dict)
+        if len(df_t_seeker) > 0:
+            for i in ['qtweet', 'retweet', 'answer']:
+
+                df_i = df_t_seeker[df_t_seeker.type == i]
+                for u_i, df_u_i in df_i.groupby('tweet_user_id_str'):
+                    if u_i not in all_user_id_str_list: continue
+                    my_dict = {i: len(df_u_i)}
+                    G.add_edge(seeker['id_str'], u_i, **my_dict)
 
         # Likes for the seeker
-        for u_i, df_u_i in df_l_seeker.groupby('tweet_user_id_str'):
-            my_dict = {'like': len(df_u_i)}
-            G.add_edge(seeker['id_str'], u_i, **my_dict)
+        if len(df_l_seeker) > 0:
+            for u_i, df_u_i in df_l_seeker.groupby('tweet_user_id_str'):
+                if u_i not in all_user_id_str_list: continue
+                my_dict = {'like': len(df_u_i)}
+                G.add_edge(seeker['id_str'], u_i, **my_dict)
         # %% Add node attributtres
 
         for user_id_str, df_u in df_wall.groupby('tweet_user_id_str'):
@@ -495,7 +524,6 @@ class EasyTwitterManager:
 
         df_users.loc[df_users.listed_count >= L, 'type'] = 'Expert'
 
-        members = self.scrape_list_members(list_id_str)
 
         df_users.loc[df_users.id_str.isin(members), 'type'] = 'Member'
 
@@ -531,13 +559,14 @@ class EasyTwitterManager:
             G.nodes[u_id_str]['bow'] = docx.bow()
 
         df_u = pd.concat([df_l_seeker, df_t_seeker])
-        G.nodes[seeker['id_str']]['emojis_rate'] = np.sum(df_u['emojis']) / len(df_u)
-        G.nodes[seeker['id_str']]['hashtags_rate'] = np.sum(df_u['hashtags']) / len(df_u)
-        G.nodes[seeker['id_str']]['urls_rate'] = np.sum(df_u['urls']) / len(df_u)
-        G.nodes[seeker['id_str']]['mentions_rate'] = np.sum(df_u['mentions']) / len(df_u)
-        docx = nt.TextFrame(text=' '.join(list(df_u['text_processed'].values)))
+        if len(df_u) > 0:
+            G.nodes[seeker['id_str']]['emojis_rate'] = np.sum(df_u['emojis']) / len(df_u)
+            G.nodes[seeker['id_str']]['hashtags_rate'] = np.sum(df_u['hashtags']) / len(df_u)
+            G.nodes[seeker['id_str']]['urls_rate'] = np.sum(df_u['urls']) / len(df_u)
+            G.nodes[seeker['id_str']]['mentions_rate'] = np.sum(df_u['mentions']) / len(df_u)
+            docx = nt.TextFrame(text=' '.join(list(df_u['text_processed'].values)))
 
-        G.nodes[seeker['id_str']]['bow'] = docx.bow()
+            G.nodes[seeker['id_str']]['bow'] = docx.bow()
 
         utools.save_obj(G_file, G)
 
