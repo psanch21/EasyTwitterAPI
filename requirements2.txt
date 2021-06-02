@@ -30,5 +30,5 @@ schedule==0.6.0
 six==1.15.0
 soupsieve==2.0.1
 TwitterAPI==2.5.13
-urllib3==1.25.9
+urllib3==1.26.5
 yarl==1.4.2
