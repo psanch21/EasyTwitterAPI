@@ -57,7 +57,11 @@ def print_user(user):
 
 class EasyTwitterAPI:
 
-    def __init__(self, cred_file, db_name='easy_twitter_api', sleep_secs=330):
+    def __init__(self, cred_file,
+                 db_name='easy_twitter_api',
+                 sleep_secs=330,
+                 host='localhost',
+                 ):
         consumer_key, consumer_secret, access_token, access_token_secret = get_credentials(cred_file)
 
         self._cache = True  # Use local data if available
@@ -68,7 +72,11 @@ class EasyTwitterAPI:
         self.api = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
         self.api_premium = None
         self.premium_endpoint = None
-        self.db = MongoClient('localhost', 27017)[db_name]
+        if host == 'localhost':
+            self.db = MongoClient('localhost', 27017)[db_name]
+        else:
+            # For example MongoDB dataset
+            self.db = MongoClient(host)[db_name]
         self.db_name = db_name
 
         self.coll_names = None
@@ -240,6 +248,7 @@ class EasyTwitterAPI:
 
         toDate_str = args['toDate'].strftime("%Y%m%d%H%m") if 'toDate' in args else None
         fromDate_str = args['fromDate'].strftime("%Y%m%d%H%m") if 'fromDate' in args else None
+        preprocess = args['preprocess'] if 'preprocess' in args else False
 
         user = None
 
@@ -277,7 +286,7 @@ class EasyTwitterAPI:
                 df = pd.DataFrame.from_dict(tweet_collection.find({}))
                 if '_id' in df.columns: df.drop(columns=['_id'], inplace=True)
                 print('Updating to statuses v2')
-                df = df.apply(lambda tweet: pd.Series(utools.clean_tweet(tweet)), axis=1)
+                df = df.apply(lambda tweet: pd.Series(utools.clean_tweet(tweet, preprocess)), axis=1)
                 self.db.drop_collection(collection_name)
                 collection = self.db[collection_name]
                 collection.insert_many(list(df.T.to_dict().values()))
@@ -306,7 +315,7 @@ class EasyTwitterAPI:
                 count += 1
                 count_total += 1
                 tmp = tweet_collection.find_one_and_update({'id_str': tweet['id_str']},
-                                                           {"$set": utools.clean_tweet(tweet)},
+                                                           {"$set": utools.clean_tweet(tweet, preprocess)},
                                                            upsert=True)
                 if tmp is None: count_total_new += 1
 
@@ -396,6 +405,7 @@ class EasyTwitterAPI:
         min_cache_tweets = args['min_cache_tweets'] if 'min_cache_tweets' in args else 1
         if max_num: count = min(count, max_num)
         since = args['since'] if 'since' in args else datetime.datetime.strptime('2006-01-01', '%Y-%m-%d')
+        preprocess = args['preprocess'] if 'preprocess' in args else False
 
         user = None
 
@@ -441,7 +451,7 @@ class EasyTwitterAPI:
                 df = pd.DataFrame.from_dict(tweet_collection.find({}))
                 if '_id' in df.columns: df.drop(columns=['_id'], inplace=True)
                 print('Updating to statuses v2')
-                df = df.apply(lambda tweet: pd.Series(utools.clean_tweet(tweet)), axis=1)
+                df = df.apply(lambda tweet: pd.Series(utools.clean_tweet(tweet, preprocess)), axis=1)
                 self.db.drop_collection(collection_name)
                 collection = self.db[collection_name]
                 collection.insert_many(list(df.T.to_dict().values()))
@@ -476,7 +486,7 @@ class EasyTwitterAPI:
                 count += 1
                 count_total += 1
                 tmp = tweet_collection.find_one_and_update({'id_str': tweet['id_str']},
-                                                           {"$set": utools.clean_tweet(tweet)},
+                                                           {"$set": utools.clean_tweet(tweet, preprocess)},
                                                            upsert=True)
                 if tmp is None: count_total_new += 1
 
@@ -831,6 +841,7 @@ class EasyTwitterAPI:
 
             count = 0
             for i, user in enumerate(r):
+                user = self.preprocess_user(user)
                 users_collection.find_one_and_update({'id_str': user['id_str']},
                                                      {"$set": user},
                                                      upsert=True)
@@ -849,6 +860,17 @@ class EasyTwitterAPI:
             return user_list[0]
         else:
             return user_list
+
+
+
+    def preprocess_user(self, user):
+        keys = list(user.keys())
+        for k in keys:
+            if 'profile' in k:
+                user.pop(k)
+        return user
+
+
 
     # %% Lists
 
@@ -1260,7 +1282,7 @@ class EasyTwitterAPI:
         if not success: return None
 
         for i, tweet in enumerate(r):
-            tweet_cleaned = utools.clean_tweet(tweet)
+            tweet_cleaned = utools.clean_tweet(tweet, preprocess)
 
             tmp = self.save_entry(data=tweet_cleaned,
                                   id={'id_str': tweet_cleaned['id_str']},
@@ -1291,6 +1313,7 @@ class EasyTwitterAPI:
 
         toDate_str = args['toDate'].strftime("%Y%m%d%H%m") if 'toDate' in args else None
         fromDate_str = args['fromDate'].strftime("%Y%m%d%H%m") if 'fromDate' in args else None
+
 
         if 'screen_name' in args:
             user = self.get_user(screen_name=args['screen_name'])
@@ -1345,7 +1368,7 @@ class EasyTwitterAPI:
         if not success: return None
 
         for i, tweet in enumerate(r):
-            tweet_cleaned = utools.clean_tweet(tweet)
+            tweet_cleaned = utools.clean_tweet(tweet, preprocess)
 
             tmp = self.save_entry(data=tweet_cleaned,
                                   id={'id_str': tweet_cleaned['id_str']},

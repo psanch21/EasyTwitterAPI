@@ -25,11 +25,21 @@ python setup.py install
 ```
 
 ## How to use this package?
-Easy, just 4 steps.
+You just need to follow the next four steps.
+#### Step 0: Get MongoDB
 
-#### Step 0: Get MongoDB running on your computer
+EasyTwitterAPI uses MongoDB to store the twitter data. We have tested the code in two settings: 
+Local MongoDB and [Cloud MongoDB](https://www.mongodb.com/es).
 
-EasyTwitterAPI assumes that a MongoDB instance is running on the default host and port. To install MongoDB please follow the [official guide](http://www.mongodb.org/display/DOCS/Getting+Started).
+If you opt for Local MongoDB,  EasyTwitterAPI assumes that a MongoDB instance is running on the default host and port. 
+To install MongoDB please follow the [official guide](http://www.mongodb.org/display/DOCS/Getting+Started).
+
+If you opt for Cloud MongoDB, you should i) create an account [here](https://www.mongodb.com/es),
+ ii) create a database (there is a free version), iii) search for the `host` name under `Connect --> Connect your application`.
+ The host should look something like
+ ```
+host = mongodb+srv://<user_admin>:<password>@cluster[...]mongodb.net/myF[...]
+```
 #### Step 1: Get your Twitter Developer credentials 
 
 Go to [Twitter Developer](https://developer.twitter.com/en) and get your credentials, both the free and paid version are valid.
@@ -52,7 +62,10 @@ The main object only has one required parameter, the credential file of Step 1.
 from easy_twitter_api import EasyTwitterAPI
 
 
-scraper = EasyTwitterAPI(cred_file='credentials.json')
+scraper = EasyTwitterAPI(cred_file='credentials.json',
+                         db_name='MY_TWITTER_DB',
+                         sleep_secs=60 * 8,
+                         host=host)
 ```
 
 

@@ -183,7 +183,7 @@ def create_df_from_user_list(user_list, drop=True):
     return df
 
 
-def clean_tweet(tweet):
+def clean_tweet(tweet, preprocess):
     tweet_clean = {key: tweet[key] for key in
                    ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str',
                     'in_reply_to_screen_name',
@@ -205,7 +205,10 @@ def clean_tweet(tweet):
 
     tweet_clean['timestamp'] = parser.parse(tweet['created_at']).timestamp()
 
-    tweet_clean['text_processed'] = preprocess_text(tweet_clean['text'])
+    if preprocess:
+        tweet_clean['text_processed'] = preprocess_text(tweet_clean['text'])
+    else:
+        tweet_clean['text_processed'] = None
     text = tweetp.parse(tweet_clean['text'])
     tweet_clean['emojis'] = min(length(text.emojis), 127)
     tweet_clean['hashtags'] = min(length(text.hashtags), 127)
