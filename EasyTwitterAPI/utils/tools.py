@@ -183,7 +183,7 @@ def create_df_from_user_list(user_list, drop=True):
     return df
 
 
-def clean_tweet(tweet, preprocess):
+def clean_tweet(tweet, preprocess, user_id_str):
     tweet_clean = {key: tweet[key] for key in
                    ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str',
                     'in_reply_to_screen_name',
@@ -214,10 +214,12 @@ def clean_tweet(tweet, preprocess):
     tweet_clean['hashtags'] = min(length(text.hashtags), 127)
     tweet_clean['urls'] = min(length(text.urls), 127)
     tweet_clean['mentions'] = min(length(text.mentions), 127)
+    tweet_clean['id_str_timeline'] = user_id_str
+
     return tweet_clean
 
 
-def clean_list(list_):
+def clean_list(list_, preprocess):
     list_clean = list_.copy()
     user = None
     if 'user' in list_clean:
@@ -227,7 +229,10 @@ def clean_list(list_):
         del list_clean['user']
 
     list_clean['created_at'] = parser.parse(list_clean['created_at']).replace(tzinfo=None)
-    list_clean['text_processed'] = preprocess_text(' '.join([list_clean['name'], list_clean['description']]))
+    if preprocess:
+        list_clean['text_processed'] = preprocess_text(' '.join([list_clean['name'], list_clean['description']]))
+    else:
+        list_clean['text_processed'] = None
 
     return list_clean, user
 
@@ -239,7 +244,7 @@ def create_df_list(list_list):
                                      'id', 'member_count', 'mode', 'name', 'slug', 'subscriber_count', 'uri',
                                      'user_id_str', 'user_screen_name', 'datetime'])
 
-    df['datetime'] = df.apply(lambda x: parser.parse(x['created_at']).replace(tzinfo=None), axis=1)
+    # df['datetime'] = df.apply(lambda x: parser.parse(x['created_at']).replace(tzinfo=None), axis=1)
     return df
 
 

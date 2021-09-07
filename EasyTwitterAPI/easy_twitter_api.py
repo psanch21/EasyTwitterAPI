@@ -15,19 +15,6 @@ from pymongo import MongoClient
 import EasyTwitterAPI.utils.tools as utools
 from EasyTwitterAPI.utils.constants import Cte
 
-LIST_C = 'list'
-LIST_MEMBERS_C = 'list_members'
-LIST_MEMSHIP_C = 'list_m'
-USER_FRIENDS = f'{Cte.FRIENDS}_list'
-
-USER_FERS = f'{Cte.FOLLOWERS}_list'
-USER_C = 'user'
-TWEETS_U_C = 'tweets_'
-REPLYTO_C = 'replies_'
-
-TWEETS_V2 = 'tweets_v2'
-FAVS_U_C = 'favs_'
-RELAT_C = 'relationship'
 
 REPLIES_COL_TO_KEEP = ['_id', 'to_user_id_str', 'created_at', 'favorite_count', 'id',
                        'lang',
@@ -35,6 +22,9 @@ REPLIES_COL_TO_KEEP = ['_id', 'to_user_id_str', 'created_at', 'favorite_count', 
                        'source', 'text', 'truncated', 'user',
                        'retweeted_status', 'extended_entities', 'datetime', 'type',
                        'tweet_user_id', 'tweet_user_id_str', 'tweet_screen_name', 'timestamp']
+
+
+from EasyTwitterAPI.easy_twitter_db import EasyTwitterDB, DBCte
 
 
 def get_credentials(cred_file):
@@ -60,7 +50,7 @@ class EasyTwitterAPI:
     def __init__(self, cred_file,
                  db_name='easy_twitter_api',
                  sleep_secs=330,
-                 host='localhost',
+                 host='localhost'
                  ):
         consumer_key, consumer_secret, access_token, access_token_secret = get_credentials(cred_file)
 
@@ -72,67 +62,23 @@ class EasyTwitterAPI:
         self.api = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
         self.api_premium = None
         self.premium_endpoint = None
-        if host == 'localhost':
-            self.db = MongoClient('localhost', 27017)[db_name]
-        else:
-            # For example MongoDB dataset
-            self.db = MongoClient(host)[db_name]
-        self.db_name = db_name
 
-        self.coll_names = None
-        self.coll_tweets_names = None
-        self.coll_favs_names = None
+
+        self.db = EasyTwitterDB(db_name=db_name, host=host)
+
 
         self.sleep_secs = sleep_secs
 
-    def backup(self, root_dir, collection_list=None):
-        root_dir  = os.path.join(root_dir, self.db_name)
-        if collection_list is None:
-            collection_list = self.get_collection_names()
 
-        for coll in collection_list:
-            out_file = os.path.join(root_dir, f'{coll}.json')
-            os.system(f"mongoexport --db {self.db_name} -c {coll} --out {out_file}")
-        return
 
     def set_cred_premium(self, cred_file_premium, dev_label='awareness'):
         consumer_key, consumer_secret, access_token, access_token_secret = get_credentials(cred_file_premium)
         self.api_premium = TwitterAPI(consumer_key, consumer_secret, access_token, access_token_secret)
         self.premium_endpoint = f'tweets/search/fullarchive/:{dev_label}'
 
-    def get_collection_names(self):
-        return self.db.list_collection_names()
 
-    def refresh_collection_names(self):
-        self.coll_names = self.get_collection_names()
-        self.coll_tweets_names = [n for n in self.coll_names if 'tweets_' in n]
-        self.coll_favs_names = [n for n in self.coll_names if 'favs_' in n]
 
-    def is_collected(self, what='activity', **args):
-        user_id_str = None
-        if 'user_id' in args:
-            user_id_str = args['user_id']
-        elif 'screen_name' in args:
-            user_id_str = self.get_user(screen_name=args['screen_name'])['id_str']
-        elif 'user' in args:
-            user_id_str = args['user']['id_str']
-        if what == 'activity':
-            return f'{TWEETS_U_C}{user_id_str}' in self.coll_tweets_names
-        elif what == 'favs':
-            return f'favs_{user_id_str}' in self.coll_favs_names
 
-    def save_entry(self, data, id, collection):
-
-        data.update(id)
-        tmp = collection.find_one_and_update(id,
-                                             {"$set": data},
-                                             upsert=True)
-
-        if tmp:
-            print(f'Adding new entry wid id {id} ')
-        else:
-            print(f'Updating new entry with id {id}')
-        return tmp
 
     def set_alternative_cred_file_list(self, file_list):
         self.alternative_cred_file_list = file_list
@@ -141,55 +87,9 @@ class EasyTwitterAPI:
     def activate_cache(self, value):
         self._cache = value
 
-    def info_db(self, full=False):
-        users = self.db[USER_C]
-        lists = self.db[LIST_C]
 
-        tweets_coll_list = [i for i in self.db.list_collection_names() if TWEETS_U_C in i]
-        favs_coll_list = [i for i in self.db.list_collection_names() if FAVS_U_C in i]
-        replies_coll_list = [i for i in self.db.list_collection_names() if REPLYTO_C in i]
-        print(f'# users: {users.find({}).count()}')
-        print(f'# lists: {lists.find({}).count()}')
-        print(f'# users with activity: {len(tweets_coll_list)}')
-        print(f'# users with favs: {len(favs_coll_list)}')
-        print(f'# users with followees: {self.db[USER_FRIENDS].count_documents({})}')
-        print(f'# users with followers: {self.db[USER_FERS].count_documents({})}')
-        print(f'# users with lists membership: {self.db[LIST_MEMSHIP_C].count_documents({})}')
-        print(f'# lists with  members: {self.db[LIST_MEMBERS_C].count_documents({})}')
-        print(f'# relationships: {self.db[RELAT_C].count_documents({})}')
-        print(f'# users with replies: {len(replies_coll_list)}')
 
-        if not full: return
-        count = 0
-        for tw_coll in tweets_coll_list:
-            count += self.db[tw_coll].find({}).count()
-        print(f'# tweets: {count}')
 
-        count = 0
-        for tw_coll in favs_coll_list:
-            count += self.db[tw_coll].find({}).count()
-        print(f'# favs: {count}')
-
-    def load_cache_data(self, collection, filter_={}, find_one=False, df=False):
-        if collection not in self.db.list_collection_names():
-            return None
-
-        if find_one:
-            return self.db[collection].find_one(filter_)
-        else:
-            out = self.db[collection].find(filter_)
-
-            if df:
-                return pd.DataFrame.from_dict(out)
-            else:
-                return out
-
-    def update_cache_data(self, collection, filter_, data):
-        assert collection in self.db.list_collection_names()
-
-        tmp = self.db[collection].find_one_and_update(filter_,
-                                                      {"$set": data},
-                                                      upsert=True)
 
     def try_alternative_credentials(self):
         if len(self.alternative_cred_file_list) == 0: return
@@ -383,20 +283,6 @@ class EasyTwitterAPI:
         else:
             return df
 
-    def get_user_activity_cache(self, user_id):
-        return self._get_user_activity_cache_type(endpoint='statuses/user_timeline', user_id=user_id)
-    def get_user_favorites_cache(self, user_id):
-        return self._get_user_activity_cache_type(endpoint='favorites/list', user_id=user_id)
-
-    def _get_user_activity_cache_type(self,endpoint, user_id):
-        if endpoint == 'statuses/user_timeline':
-            collection_name = f'{TWEETS_U_C}{user_id}'
-        else:
-            collection_name = f'favs_{user_id}'
-
-
-        return pd.DataFrame.from_dict(self.load_cache_data(collection_name))
-
     def _get_user_activity_type(self, endpoint, **args):
 
         count = args['count'] if 'count' in args else 200
@@ -415,51 +301,44 @@ class EasyTwitterAPI:
             user = self.get_user(screen_name=args['screen_name'])
         elif 'user' in args:
             user = args['user']
+        else:
+            raise NotImplementedError
 
         if user is None: return None
 
         if user['protected']: return None
         username, user_id = user['screen_name'], user['id']
+        user_id_str = user['id_str']
 
         if endpoint == 'statuses/user_timeline':
             count = min(count, user['statuses_count'])
-            collection_name = f'{TWEETS_U_C}{user_id}'
+            df = self.db.load_statuses_user(user_id_str=user_id_str,
+                                            filter_={},
+                                                   return_as='df')
         else:
             count = min(count, user['favourites_count'])
-            collection_name = f'favs_{user_id}'
+            df = self.db.load_favourites_user(user_id_str=user_id_str,
+                                              filter_={},
+                                                   return_as='df')
 
         print(f'Scraping {endpoint} of {username} {user_id}')
-        tweet_collection = self.db[collection_name]
 
-        n_tweets = tweet_collection.find({}).count()
+        n_tweets =  len(df) if df is not None else 0
         since_id = args['since_id'] if 'since_id' in args else None
 
         if self._cache and n_tweets >= min_cache_tweets:
-            df = utools.create_df_from_cleaned_tweet_list(tweet_collection.find({}))
+            # df = utools.create_df_from_cleaned_tweet_list(tweet_collection.find({}))
 
             print(f'Getting user {user_id} activity from cache')
             print(f'{len(df)} events for user {user_id}')
             cols = list(df.columns)
 
             using_cache = True
-            if 'user' not in cols and 'tweet_user_id_str' in cols:
-                print('Getting statuses  cleaned')
-            elif 'user' not in cols and 'tweet_user_id_str' not in cols:
+            if 'user' not in cols and 'tweet_user_id_str' not in cols:
                 print('Scrapping again...')
                 using_cache = False
-            else:
-                df = pd.DataFrame.from_dict(tweet_collection.find({}))
-                if '_id' in df.columns: df.drop(columns=['_id'], inplace=True)
-                print('Updating to statuses v2')
-                df = df.apply(lambda tweet: pd.Series(utools.clean_tweet(tweet, preprocess)), axis=1)
-                self.db.drop_collection(collection_name)
-                collection = self.db[collection_name]
-                collection.insert_many(list(df.T.to_dict().values()))
-
-                df = utools.create_df_from_cleaned_tweet_list(collection.find({}))
 
             if using_cache:
-
                 if count > (len(df) + 1) and len(df) < 3100 and df['datetime'].min() > (since + timedelta(days=1)):
                     print('Scrapping older tweets!')
                 else:
@@ -485,9 +364,12 @@ class EasyTwitterAPI:
             for i, tweet in enumerate(r):
                 count += 1
                 count_total += 1
-                tmp = tweet_collection.find_one_and_update({'id_str': tweet['id_str']},
-                                                           {"$set": utools.clean_tweet(tweet, preprocess)},
-                                                           upsert=True)
+                if endpoint == 'statuses/user_timeline':
+                    tmp = self.db.update_statuses_user(filter_={'id_str': tweet['id_str']},
+                                                 data=utools.clean_tweet(tweet, preprocess, user_id_str))
+                else:
+                    tmp = self.db.update_favourites_user(filter_={'id_str': tweet['id_str']},
+                                                       data=utools.clean_tweet(tweet, preprocess, user_id_str))
                 if tmp is None: count_total_new += 1
 
                 if max_num and count_total >= max_num:
@@ -504,11 +386,19 @@ class EasyTwitterAPI:
             else:
                 request = False
 
-        tweet_list = list(tweet_collection.find({}))
-        print(f'{count_total_new} new events for user {user_id}')
-        print(f'{len(tweet_list)} events for user {user_id}')
+        if endpoint == 'statuses/user_timeline':
+            df = self.db.load_statuses_user(user_id_str=user_id_str,
+                                            filter_={},
+                                            return_as='df')
+        else:
+            df = self.db.load_favourites_user(user_id_str=user_id_str,
+                                              filter_={},
+                                              return_as='df')
 
-        df = utools.create_df_from_cleaned_tweet_list(tweet_list)
+        print(f'{count_total_new} new events for user {user_id}')
+        print(f'{len(df)} events for user {user_id}')
+
+        # df = utools.create_df_from_cleaned_tweet_list(tweet_list)
         return df[df['timestamp'] > since.timestamp()]
 
     # %% User Favorites
@@ -621,6 +511,7 @@ class EasyTwitterAPI:
         return self.get_connection(connection_type=Cte.FOLLOWERS, **args)
 
     def get_connection(self, connection_type, **args):
+        assert connection_type in [Cte.FOLLOWERS, Cte.FRIENDS]
 
         user = None
 
@@ -638,12 +529,16 @@ class EasyTwitterAPI:
         true_count = user['friends_count'] if connection_type == Cte.FRIENDS else user['followers_count']
 
         print(f'Scraping {connection_type} of user {username} {user_id}')
+        find_query = {"id_str": user['id_str']}
 
-        list_name = f'{connection_type}_list'
+        collection_name = f'{connection_type}_list'
 
-        data = self.db[list_name].find_one({"id_str": user['id_str']})
+        data = self.db.load(collection=collection_name,
+                                            filter_=find_query,
+                                       find_one=True)
 
         data = data if data else {'id_str': user['id_str'], 'id_str_list': []}
+
 
         if cache and len(data['id_str_list']) > 0:
             ids_list = [str(i) for i in data['id_str_list']] if str_format else data['id_str_list']
@@ -679,9 +574,9 @@ class EasyTwitterAPI:
 
             data['id_str_list'] = list(set(data['id_str_list']))
 
-            self.db[list_name].find_one_and_update({"id_str": user['id_str']},
-                                                   {"$set": data},
-                                                   upsert=True)
+            self.db.update_data(collection=collection_name,
+                                      filter_={"id_str": user['id_str']},
+                                      data=data)
 
         output = [str(i) for i in data['id_str_list']] if str_format else data['id_str_list']
         return output  # list(users_collection.find({"id": {"$in": user[list_name]}}))
@@ -803,8 +698,6 @@ class EasyTwitterAPI:
         :return: user (json_format)
         '''
 
-        query = {}
-        find_query = {}
         if 'screen_name' in args:
             id_list = args['screen_name'] if isinstance(args['screen_name'], list) else [args['screen_name']]
             query = {'screen_name': ','.join(id_list)}
@@ -815,13 +708,16 @@ class EasyTwitterAPI:
             id_list = [str(i) for i in id_list]
             query = {'user_id': ','.join(id_list)}
             find_query = {"id_str": {"$in": id_list}}
+        else:
+            raise NotImplementedError
 
-        users_collection = self.db[USER_C]
-
-        count_cache = users_collection.find(find_query).count()
+        count_cache =  self.db.count(DBCte.USER_C, find_query)
 
         if self._cache and count_cache == len(id_list):
-            user_list = list(users_collection.find(find_query))
+            user_list = self.db.load(collection=DBCte.USER_C,
+                                                filter_=find_query,
+                                                return_as='list')
+
             for user in user_list:
                 print(f"Getting user {user['id']} from cache")
                 print_user(user)
@@ -842,9 +738,9 @@ class EasyTwitterAPI:
             count = 0
             for i, user in enumerate(r):
                 user = self.preprocess_user(user)
-                users_collection.find_one_and_update({'id_str': user['id_str']},
-                                                     {"$set": user},
-                                                     upsert=True)
+                self.db.update_data(collection=DBCte.USER_C,
+                                          filter_={'id_str': user['id_str']},
+                                          data=user)
                 user_list.append(user)
                 count += 1
                 print_user(user=user)
@@ -874,15 +770,16 @@ class EasyTwitterAPI:
 
     # %% Lists
 
-    def get_list(self, list_id_str):
+    def get_list(self, list_id_str, **args):
 
-        lists_collection = self.db[LIST_C]
+        list_ = self.db.load_lists(filter_={'id_str': list_id_str},
+                                   find_one=True)
 
-        list_ = lists_collection.find_one({'id_str': list_id_str})
+        preprocess = args['preprocess'] if 'preprocess' in args else False
 
         if self._cache and list_:
             print(f"Getting List {list_['id_str']}  from cache")
-            return utools.clean_list(list_)
+            return list_
 
         endpoint = 'lists/show'
 
@@ -897,7 +794,13 @@ class EasyTwitterAPI:
 
             count = 0
             for i, l in enumerate(r):
-                tmp = self.find_and_update_list(l)
+                l_clean, user_ = utools.clean_list(l, preprocess)
+
+                tmp = self.db.update_list(filter_={'id_str': l['id_str']},
+                                          data=l_clean)
+
+                self.db.update_user(filter_={'id_str': user_['id_str']},
+                                    data=user_)
                 count += 1
                 total_count += 1
 
@@ -911,42 +814,27 @@ class EasyTwitterAPI:
 
         return l
 
-    def refractor_list_collection(self):
-        lists = self.db[LIST_C].find({})
-        lists_db = pd.DataFrame.from_dict(lists)
-        n_lists = len(lists_db)
 
-        i = 0
-        lists_to_be_updated = []
-        for _, list_ in lists_db.iterrows():
-            i += 1
-            if i % 100 == 0: print(f'Processed lists {i}/{n_lists}')
-            if 'user_id_str' not in list_ or not isinstance(list_['user_id_str'], str):
-                lists_to_be_updated.append(utools.clean_list(list_))
-
-        n_lists = len(lists_to_be_updated)
-        for i, list_ in enumerate(lists_to_be_updated):
-            if i % 10 == 0: print(f'Updated lists {i}/{n_lists}')
-            self.find_and_update_list(list_.to_dict())
-        return
 
     def get_lists_of_user_full(self, list_type, **args):
-        l_id_str_list = self.get_lists_of_user(list_type, **args)
+        l_id_str_list = self.get_lists_ids_of_user(list_type, **args)
         if l_id_str_list is None: l_id_str_list = []
-        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        cursor = self.db.load_lists(filter_={'id_str': {'$in': l_id_str_list}},
+                                      return_as='cursor')
         df_lists = utools.create_df_list(cursor)
         if len(df_lists) == len(l_id_str_list): return df_lists
         l_remaining = set(l_id_str_list) - set(df_lists['id_str'].unique())
         for id_str in list(l_remaining):
             l = self.get_list(list_id_str=id_str)
 
-        cursor = self.load_cache_data(collection=LIST_C, filter_={'id_str': {'$in': l_id_str_list}})
+        cursor = self.db.load_lists(filter_={'id_str': {'$in': l_id_str_list}},
+                                    return_as='cursor')
         df_lists = utools.create_df_list(cursor)
         assert len(df_lists) == len(l_id_str_list)
 
         return df_lists
 
-    def get_lists_of_user(self, list_type, **args):
+    def get_lists_ids_of_user(self, list_type, **args):
         '''
         https://developer.twitter.com/en/docs/accounts-and-users/create-manage-lists/api-reference/get-lists-memberships
 
@@ -962,7 +850,7 @@ class EasyTwitterAPI:
         max_num = args['max_num'] if 'max_num' in args else 100000
         force = args['force'] if 'force' in args else False
         since = args['since'] if 'since' in args else datetime.datetime.strptime('2009-01-01', '%Y-%m-%d')
-
+        preprocess = args['preprocess'] if 'preprocess' in args else False
         if 'screen_name' in args:
             user = self.get_user(screen_name=args['screen_name'])
         elif 'user_id' in args:
@@ -973,14 +861,16 @@ class EasyTwitterAPI:
         username, user_id = user['screen_name'], str(user['id'])
         print(f'Scraping Lists of {username} {user_id}')
 
-        list_name = f'{LIST_C}_{list_type}'
 
-        data = self.db[list_name].find_one({"id_str": user['id_str']})
+        data = self.db.load_lists_of_user(list_type=list_type,
+                                          filter_={"id_str": user['id_str']},
+                                          find_one=True)
+
 
         data = data if data else {'id_str': user['id_str'], 'lists': []}
 
         if not force and self._cache and len(data['lists']) > 0:
-            print(f'Getting user {user_id} {list_name} from cache')
+            print(f'Getting user {user_id} {list_type} from cache')
             lists_user = data['lists']
             print(f'{len(lists_user)} Lists for user {user_id}')
             return lists_user[:max_num]
@@ -1009,7 +899,12 @@ class EasyTwitterAPI:
             count = 0
             for i, json in enumerate(r):
                 for l in json['lists']:
-                    tmp = self.find_and_update_list(l)
+                    l_clean, user_ = utools.clean_list(l, preprocess)
+                    tmp = self.db.update_list(filter_={'id_str': l['id_str']},
+                                        data=l_clean)
+
+                    self.db.update_user(filter_={'id_str': user_['id_str']},
+                                        data=user_)
 
                     data['lists'].append(l['id_str'])
                     count += 1
@@ -1019,7 +914,7 @@ class EasyTwitterAPI:
                         break
                     if tmp is None: count_total_new += 1
 
-                    if total_count >= max_num:
+                    if total_count > max_num:
                         request = False
                         break
             print(f'{count} lists retrieved')
@@ -1031,9 +926,11 @@ class EasyTwitterAPI:
 
             data['lists'] = list(set(data['lists']))
 
-            tmp = self.db[list_name].find_one_and_update({'id_str': user['id_str']},
-                                                         {"$set": data},
-                                                         upsert=True)
+
+            self.db.update_lists_of_user(list_type=list_type,
+                                         filter_={'id_str': user['id_str']},
+                                         data=data)
+
 
         print(f'{count_total_new} new Lists for user {user_id}')
         print(f"{len(data['lists'])} Lists for user {user_id}")
@@ -1045,25 +942,19 @@ class EasyTwitterAPI:
         self.activate_cache(True)
         df = self.get_lists_of_user_full(list_type, **args)
         if df is None or len(df) == 0: return df
-        if df['datetime'].max() < min_dt:
+        if df['created_at'].max() < min_dt:
+            print(f"gadgag: {df['created_at'].max() }")
+
             self.activate_cache(False)
-            _ = self.get_lists_of_user(list_type=list_type, since=df['datetime'].max(), **args)
+            _ = self.get_lists_ids_of_user(list_type=list_type, since=df['created_at'].max(), **args)
             self.activate_cache(cache)
 
         full = args['full'] if 'full' in args else False
         if full:
             df = self.get_lists_of_user_full(list_type, **args)
         else:
-            df = self.get_lists_of_user(list_type, **args)
+            df = self.get_lists_ids_of_user(list_type, **args)
         return df
-
-    def find_and_update_list(self, l):
-        l = utools.clean_list(l)
-        tmp = self.db[LIST_C].find_one_and_update({'id_str': l['id_str']},
-                                                  {"$set": l},
-                                                  upsert=True)
-
-        return tmp
 
     def get_members_of_list(self, list_id_str, **args):
 
@@ -1073,7 +964,8 @@ class EasyTwitterAPI:
         max_num = args['max_num'] if 'max_num' in args else 100000
         cache = args['cache'] if 'cache' in args else self._cache
 
-        data = self.db[LIST_MEMBERS_C].find_one({'id_str': list_id_str})
+        data = self.db.load_members_of_lists(filter_={'id_str': list_id_str},
+                                             find_one=True)
 
         data = data if data else {'id_str': list_id_str, 'member_list': []}
 
@@ -1099,9 +991,8 @@ class EasyTwitterAPI:
             r, success = self.try_request(endpoint, query)
             if not success:
                 data['member_list'] = r.status_code
-                self.db[LIST_MEMBERS_C].find_one_and_update({'id_str': list_id_str},
-                                                            {"$set": data},
-                                                            upsert=True)
+                self.db.update_members_of_list(filter_={'id_str': list_id_str},
+                                               data=data)
                 return []
 
             count = 0
@@ -1125,10 +1016,8 @@ class EasyTwitterAPI:
                 request = False
 
             data['member_list'] = list(set(data['member_list']))
-
-            self.db[LIST_MEMBERS_C].find_one_and_update({'id_str': list_id_str},
-                                                        {"$set": data},
-                                                        upsert=True)
+            self.db.update_members_of_list(filter_={'id_str': list_id_str},
+                                           data=data)
 
         return data['member_list']
 
