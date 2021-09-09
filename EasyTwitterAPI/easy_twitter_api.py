@@ -663,19 +663,30 @@ class EasyTwitterAPI:
         elif 'user_id' in args:
             user_id_list_total = [str(i) for i in args['user_id']]
             filter_ = {'id_str': {'$in': user_id_list_total}}
+        else:
+            raise NotImplementedError
 
-        user_list = list(self.load_cache_data(collection=USER_C, filter_=filter_))
-        if len(user_list) == len(user_id_list_total):
-            return utools.create_df_from_user_list(user_list, drop=drop)
+
+        df = self.db.load_users(filter_=filter_,
+                                       find_one=False,
+                                       return_as='df',
+                                      drop=drop)
+        if len(df) == len(user_id_list_total):
+            return  df
 
         user_list = []
-        df_users = utools.create_df_from_user_list(user_list, drop=drop)
 
         if 'screen_name' in args:
-            user_id_list = list(set(user_id_list_total) - set(df_users['screen_name'].unique()))
+            if len(df) > 0:
+                user_id_list = list(set(user_id_list_total) - set(df['screen_name'].unique()))
+            else:
+                user_id_list = list(set(user_id_list_total) )
 
         elif 'user_id' in args:
-            user_id_list = list(set(user_id_list_total) - set(df_users['id_str'].unique()))
+            if len(df) > 0:
+                user_id_list = list(set(user_id_list_total) - set(df['id_str'].unique()))
+            else:
+                user_id_list = list(set(user_id_list_total))
 
         n_iter = np.ceil(len(user_id_list) / 100).astype(int)
 
@@ -688,8 +699,11 @@ class EasyTwitterAPI:
                 u = self.get_user(user_id=user_id_list[i * 100:(i + 1) * 100])
                 if not isinstance(u, list): u = [u]
                 user_list.extend(u)
-        user_list = list(self.load_cache_data(collection=USER_C, filter_=filter_))
-        return utools.create_df_from_user_list(user_list, drop=drop)
+        df = self.db.load_users(filter_=filter_,
+                                find_one=False,
+                                return_as='df',
+                                drop=drop)
+        return df
 
     def get_user(self, **args):
         '''

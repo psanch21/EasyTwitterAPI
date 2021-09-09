@@ -1,22 +1,9 @@
-import datetime
-import json
 import os
-import time
-from datetime import timedelta
 
-import numpy as np
 import pandas as pd
-import twint
-from TwitterAPI import TwitterAPI
-from TwitterAPI import TwitterError
-from dateutil import parser
-
-import EasyTwitterAPI.utils.tools as utools
-from EasyTwitterAPI.utils.constants import Cte
-import mysql.connector
-import json
-
 from pymongo import MongoClient
+
+from EasyTwitterAPI.utils.constants import Cte
 
 
 class DBCte:
@@ -44,8 +31,6 @@ class EasyTwitterDB:
             # For example MongoDB dataset
             self.db = MongoClient(host)[db_name]
 
-
-
         self.db_name = db_name
         self.host = host
 
@@ -53,10 +38,8 @@ class EasyTwitterDB:
         self.coll_tweets_names = None
         self.coll_favs_names = None
 
-
-
     def backup(self, root_dir, collection_list=None):
-        root_dir  = os.path.join(root_dir, self.db_name)
+        root_dir = os.path.join(root_dir, self.db_name)
         if collection_list is None:
             collection_list = self.collection_names()
 
@@ -65,11 +48,8 @@ class EasyTwitterDB:
             os.system(f"mongoexport --db {self.db_name} -c {coll} --out {out_file}")
         return
 
-
     def collection_names(self):
         return self.db.list_collection_names()
-
-
 
     def refresh_collection_names(self):
         self.coll_names = self.collection_names()
@@ -87,43 +67,43 @@ class EasyTwitterDB:
         else:
             out = self.db[collection].find(filter_)
 
-            if return_as=='df':
+            if return_as == 'df':
                 df = pd.DataFrame.from_dict(out)
                 if df is None:
                     df = pd.DataFrame()
                 return df
-            elif return_as=='list':
+            elif return_as == 'list':
                 return list(out)
             else:
                 return out
 
-
-    def load_users(self, filter_={}, find_one=False, return_as='cursor'):
-        return self.load(collection=DBCte.USER_C, filter_=filter_,find_one=find_one,return_as=return_as)
+    def load_users(self, filter_, find_one=False, return_as='cursor', drop=True):
+        data =  self.load(collection=DBCte.USER_C, filter_=filter_, find_one=find_one, return_as=return_as)
+        if return_as == 'df' and len(data) > 0:
+            data.set_index(keys='id_str', inplace=True, drop=drop)
+        return data
 
     def load_lists(self, filter_={}, find_one=False, return_as='cursor'):
-        return self.load(collection=DBCte.LIST_C, filter_=filter_,find_one=find_one,return_as=return_as)
+        return self.load(collection=DBCte.LIST_C, filter_=filter_, find_one=find_one, return_as=return_as)
 
     def load_members_of_lists(self, filter_={}, find_one=False, return_as='cursor'):
-        return self.load(collection=DBCte.LIST_MEMBERS_C, filter_=filter_,find_one=find_one,return_as=return_as)
-
+        return self.load(collection=DBCte.LIST_MEMBERS_C, filter_=filter_, find_one=find_one, return_as=return_as)
 
     def load_lists_of_user(self, list_type, filter_={}, find_one=False, return_as='cursor'):
         collection = f'{DBCte.LIST_C}_{list_type}'
 
-        return self.load(collection=collection, filter_=filter_,find_one=find_one,return_as=return_as)
+        return self.load(collection=collection, filter_=filter_, find_one=find_one, return_as=return_as)
 
-
-    def load_statuses_user(self, user_id_str,  filter_, find_one=False, return_as='cursor'):
+    def load_statuses_user(self, user_id_str, filter_, find_one=False, return_as='cursor'):
 
         collection = f'{DBCte.TWEETS_U_C}_{user_id_str[-1]}'
 
         assert 'id_str_timeline' not in filter_, print(f"The filter is {filter_}")
         filter_.update({'id_str_timeline': user_id_str})
         return self.load(collection=collection,
-                  filter_=filter_,
-                  find_one=find_one,
-                  return_as=return_as)
+                         filter_=filter_,
+                         find_one=find_one,
+                         return_as=return_as)
 
     def load_favourites_user(self, user_id_str, filter_, find_one=False, return_as='cursor'):
 
@@ -132,11 +112,9 @@ class EasyTwitterDB:
         assert 'id_str_timeline' not in filter_, print(f"The filter is {filter_}")
         filter_.update({'id_str_timeline': user_id_str})
         return self.load(collection=collection,
-                  filter_=filter_,
-                  find_one=find_one,
-                  return_as=return_as)
-
-
+                         filter_=filter_,
+                         find_one=find_one,
+                         return_as=return_as)
 
     # %% UPDATE METHODS
     def update_data(self, collection, filter_, data):
@@ -149,38 +127,30 @@ class EasyTwitterDB:
                                                       upsert=True)
         return tmp
 
-
-
-    def update_lists_of_user(self,list_type, filter_, data):
+    def update_lists_of_user(self, list_type, filter_, data):
         collection = f'{DBCte.LIST_C}_{list_type}'
         self.update_data(collection=collection, filter_=filter_, data=data)
 
-
-    def update_user(self,filter_, data):
+    def update_user(self, filter_, data):
         return self.update_data(collection=DBCte.USER_C, filter_=filter_, data=data)
 
-
-    def update_list(self,filter_, data):
+    def update_list(self, filter_, data):
         return self.update_data(collection=DBCte.LIST_C, filter_=filter_, data=data)
 
-
-    def update_members_of_list(self,filter_, data):
+    def update_members_of_list(self, filter_, data):
         return self.update_data(collection=DBCte.LIST_MEMBERS_C, filter_=filter_, data=data)
 
-
-    def update_statuses_user(self,filter_, data):
+    def update_statuses_user(self, filter_, data):
         user_id_str = data['id_str_timeline']
         collection = f'{DBCte.TWEETS_U_C}_{user_id_str[-1]}'
         filter_['id_str_timeline'] = data['id_str_timeline']
         return self.update_data(collection=collection, filter_=filter_, data=data)
 
-
-    def update_favourites_user(self,filter_, data):
+    def update_favourites_user(self, filter_, data):
         user_id_str = data['id_str_timeline']
         collection = f'{DBCte.FAVS_U_C}_{user_id_str[-1]}'
         filter_['id_str_timeline'] = data['id_str_timeline']
         return self.update_data(collection=collection, filter_=filter_, data=data)
-
 
     def count(self, collection='activity', filter={}):
         if collection == 'user':
@@ -193,10 +163,6 @@ class EasyTwitterDB:
             raise NotImplementedError
 
         return collection.find(filter).count()
-
-
-
-
 
     def info_db(self, full=False):
         raise NotImplementedError
@@ -227,5 +193,3 @@ class EasyTwitterDB:
         for tw_coll in favs_coll_list:
             count += self.db[tw_coll].find({}).count()
         print(f'# favs: {count}')
-
-
