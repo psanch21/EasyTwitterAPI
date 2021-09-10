@@ -4,7 +4,8 @@ import pandas as pd
 from pymongo import MongoClient
 
 from EasyTwitterAPI.utils.constants import Cte
-
+import pymongo
+from pymongo.errors import DuplicateKeyError
 
 class DBCte:
     LIST_C = 'list'
@@ -119,18 +120,74 @@ class EasyTwitterDB:
 
 
     def create_indexes(self):
-        raise NotImplementedError
+        for i in range(10):
+            collection = f'{DBCte.TWEETS_U_C}_{i}'
+            print(f"Creating indexes for collection {collection}")
+            self.db[collection].list_indexes()
+            self.db[collection].create_index("id_str_timeline")
+            self.db[collection].create_index( keys=[("id_str", pymongo.ASCENDING),
+                          ("id_str_timeline",pymongo.ASCENDING) ],
+                       unique=True)
+
+        for i in range(10):
+            collection = f'{DBCte.FAVS_U_C}_{i}'
+            print(f"Creating indexes for collection {collection}")
+            self.db[collection].create_index("id_str_timeline")
+            self.db[collection].create_index( keys=[("id_str", pymongo.ASCENDING),
+                          ("id_str_timeline",pymongo.ASCENDING) ],
+                       unique=True)
+
+        print(f"Creating indexes for collection {DBCte.LIST_C}")
+        try:
+            self.db[DBCte.LIST_C].create_index("id_str", unique=True)
+        except DuplicateKeyError:
+            print('Duplicate key! Removing duplicates (run again to create index)')
+
+
+            df = self.load_lists({}, return_as='df')
+            df_g = df.groupby('id_str').count()
+            cond = df_g['created_at'] > 1
+            id_str_list = list(df_g[cond].index)
+            out = self.db[DBCte.LIST_C].delete_many({'id_str': {'$in': id_str_list}})
+            print(out)
+
+
+        print(f"Creating indexes for collection {DBCte.USER_C}")
+        try:
+            self.db[DBCte.USER_C].create_index("id_str", unique=True)
+        except DuplicateKeyError:
+            print('Duplicate key! Removing duplicates (run again to create index)')
+
+
+            df = self.load_users({}, return_as='df')
+            df_g = df.groupby('id_str').count()
+            cond = df_g['created_at'] > 1
+            id_str_list = list(df_g[cond].index)
+            out = self.db[DBCte.USER_C].delete_many({'id_str': {'$in': id_str_list}})
+            print(out)
+
+
+
+
+
 
     # %% UPDATE METHODS
     def update_data(self, collection, filter_, data):
         # assert collection in self.collection_names()
 
         if isinstance(data, dict) and '_id' in data: del data['_id']
-
         tmp = self.db[collection].find_one_and_update(filter_,
                                                       {"$set": data},
                                                       upsert=True)
         return tmp
+
+
+    def insert_many(self, collection, data_list):
+        # assert collection in self.collection_names()
+
+        for data in data_list:
+            if isinstance(data, dict) and '_id' in data: del data['_id']
+        return self.db[collection].insert_many(data_list)
 
     def update_lists_of_user(self, list_type, filter_, data):
         collection = f'{DBCte.LIST_C}_{list_type}'
@@ -150,6 +207,18 @@ class EasyTwitterDB:
         collection = f'{DBCte.TWEETS_U_C}_{user_id_str[-1]}'
         filter_['id_str_timeline'] = data['id_str_timeline']
         return self.update_data(collection=collection, filter_=filter_, data=data)
+
+    def insert_many_statuses(self, data_list, id_str_user):
+        return self._insert_many_activity(DBCte.TWEETS_U_C, data_list, id_str_user)
+
+    def _insert_many_activity(self, activity_type, data_list, id_str_user):
+        if len(data_list) == 0: return
+        user_id_str = id_str_user
+        collection = f'{activity_type}_{user_id_str[-1]}'
+        return self.insert_many(collection=collection, data_list=data_list)
+
+    def insert_many_favourites(self, data_list, id_str_user):
+        return self._insert_many_activity(DBCte.FAVS_U_C, data_list, id_str_user)
 
     def update_favourites_user(self, filter_, data):
         user_id_str = data['id_str_timeline']
