@@ -23,13 +23,13 @@ class DBCte:
 
 class EasyTwitterDB:
 
-    def __init__(self, db_name, host):
+    def __init__(self, db_name, host, tlsAllowInvalidCertificates=True):
 
         if host == 'localhost':
-            self.db = MongoClient('localhost', 27017)[db_name]
+            self.db = MongoClient('localhost', 27017, tlsAllowInvalidCertificates=tlsAllowInvalidCertificates)[db_name]
         else:
             # For example MongoDB dataset
-            self.db = MongoClient(host)[db_name]
+            self.db = MongoClient(host, tlsAllowInvalidCertificates=tlsAllowInvalidCertificates)[db_name]
 
         self.db_name = db_name
         self.host = host
@@ -115,6 +115,11 @@ class EasyTwitterDB:
                          filter_=filter_,
                          find_one=find_one,
                          return_as=return_as)
+
+
+
+    def create_indexes(self):
+        raise NotImplementedError
 
     # %% UPDATE METHODS
     def update_data(self, collection, filter_, data):
