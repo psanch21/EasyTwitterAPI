@@ -278,7 +278,7 @@ class EasyTwitterAPI:
         if max_num: count = min(count, max_num)
         since = args['since'] if 'since' in args else datetime.datetime.strptime('2006-01-01', '%Y-%m-%d')
         preprocess = args['preprocess'] if 'preprocess' in args else False
-        update_many = args['update_many'] if 'update_many' in args else False
+        update_many = args['update_many'] if 'update_many' in args else True
 
         user = None
 
@@ -355,7 +355,7 @@ class EasyTwitterAPI:
                 count += 1
                 count_total += 1
                 tweet_clean = utools.clean_tweet(tweet, preprocess, user_id_str)
-                if not update_many or df is None or len(df) == 0:
+                if not update_many:
                     if endpoint == 'statuses/user_timeline':
                         tmp = self.db.update_statuses_user(filter_={'id_str': tweet['id_str'],
                                                                     'id_str_timeline': user_id_str},
