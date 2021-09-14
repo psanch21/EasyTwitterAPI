@@ -1,11 +1,12 @@
 import os
 
 import pandas as pd
+import pymongo
 from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 
 from EasyTwitterAPI.utils.constants import Cte
-import pymongo
-from pymongo.errors import DuplicateKeyError
+
 
 class DBCte:
     LIST_C = 'list'
@@ -79,7 +80,7 @@ class EasyTwitterDB:
                 return out
 
     def load_users(self, filter_, find_one=False, return_as='cursor', drop=True):
-        data =  self.load(collection=DBCte.USER_C, filter_=filter_, find_one=find_one, return_as=return_as)
+        data = self.load(collection=DBCte.USER_C, filter_=filter_, find_one=find_one, return_as=return_as)
         if return_as == 'df' and len(data) > 0:
             data.set_index(keys='id_str', inplace=True, drop=drop)
         return data
@@ -106,6 +107,26 @@ class EasyTwitterDB:
                          find_one=find_one,
                          return_as=return_as)
 
+    def load_activity(self, id_str_user_list, min_dt, max_dt, return_as='df'):
+        df_list = []
+        id_str_user_list = id_str_user_list[:10]
+        for i in range(10):
+            id_str_i = [id_str for id_str in id_str_user_list if id_str[-1] == str(i)]
+            collection = f'{DBCte.TWEETS_U_C}_{i}'
+            filter_ = {'id_str_timeline': {'$in': id_str_i},
+                       'datetime': {'$gt': min_dt, '$lt': max_dt}}
+            df_activity = self.load(collection=collection,
+                                    filter_=filter_,
+                                    find_one=False,
+                                    return_as=return_as)
+            if len(df_activity) > 0:
+                df_list.append(df_activity)
+
+        if len(df_list) > 0:
+            return pd.concat(df_list)
+        else:
+            return pd.DataFrame()
+
     def load_favourites_user(self, user_id_str, filter_, find_one=False, return_as='cursor'):
 
         collection = f'{DBCte.FAVS_U_C}_{user_id_str[-1]}'
@@ -117,32 +138,29 @@ class EasyTwitterDB:
                          find_one=find_one,
                          return_as=return_as)
 
-
-
     def create_indexes(self):
         for i in range(10):
             collection = f'{DBCte.TWEETS_U_C}_{i}'
             print(f"Creating indexes for collection {collection}")
             self.db[collection].list_indexes()
             self.db[collection].create_index("id_str_timeline")
-            self.db[collection].create_index( keys=[("id_str", pymongo.ASCENDING),
-                          ("id_str_timeline",pymongo.ASCENDING) ],
-                       unique=True)
+            self.db[collection].create_index(keys=[("id_str", pymongo.ASCENDING),
+                                                   ("id_str_timeline", pymongo.ASCENDING)],
+                                             unique=True)
 
         for i in range(10):
             collection = f'{DBCte.FAVS_U_C}_{i}'
             print(f"Creating indexes for collection {collection}")
             self.db[collection].create_index("id_str_timeline")
-            self.db[collection].create_index( keys=[("id_str", pymongo.ASCENDING),
-                          ("id_str_timeline",pymongo.ASCENDING) ],
-                       unique=True)
+            self.db[collection].create_index(keys=[("id_str", pymongo.ASCENDING),
+                                                   ("id_str_timeline", pymongo.ASCENDING)],
+                                             unique=True)
 
         print(f"Creating indexes for collection {DBCte.LIST_C}")
         try:
             self.db[DBCte.LIST_C].create_index("id_str", unique=True)
         except DuplicateKeyError:
             print('Duplicate key! Removing duplicates (run again to create index)')
-
 
             df = self.load_lists({}, return_as='df')
             df_g = df.groupby('id_str').count()
@@ -151,13 +169,11 @@ class EasyTwitterDB:
             out = self.db[DBCte.LIST_C].delete_many({'id_str': {'$in': id_str_list}})
             print(out)
 
-
         print(f"Creating indexes for collection {DBCte.USER_C}")
         try:
             self.db[DBCte.USER_C].create_index("id_str", unique=True)
         except DuplicateKeyError:
             print('Duplicate key! Removing duplicates (run again to create index)')
-
 
             df = self.load_users({}, return_as='df')
             df_g = df.groupby('id_str').count()
@@ -165,11 +181,6 @@ class EasyTwitterDB:
             id_str_list = list(df_g[cond].index)
             out = self.db[DBCte.USER_C].delete_many({'id_str': {'$in': id_str_list}})
             print(out)
-
-
-
-
-
 
     # %% UPDATE METHODS
     def update_data(self, collection, filter_, data):
@@ -180,7 +191,6 @@ class EasyTwitterDB:
                                                       {"$set": data},
                                                       upsert=True)
         return tmp
-
 
     def insert_many(self, collection, data_list):
         # assert collection in self.collection_names()

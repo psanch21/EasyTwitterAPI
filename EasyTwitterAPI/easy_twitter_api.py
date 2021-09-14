@@ -1,6 +1,5 @@
 import datetime
 import json
-import os
 import time
 from datetime import timedelta
 
@@ -10,7 +9,6 @@ import twint
 from TwitterAPI import TwitterAPI
 from TwitterAPI import TwitterError
 from dateutil import parser
-from pymongo import MongoClient
 
 import EasyTwitterAPI.utils.tools as utools
 from EasyTwitterAPI.utils.constants import Cte
@@ -404,11 +402,13 @@ class EasyTwitterAPI:
                                               filter_={},
                                               return_as='df')
 
-
         print(f'{len(df)} events for user {user_id}')
 
         # df = utools.create_df_from_cleaned_tweet_list(tweet_list)
-        return df[df['timestamp'] > since.timestamp()]
+        if len(df) > 0:
+            return df[df['timestamp'] > since.timestamp()]
+        else:
+            return df
 
     # %% User Favorites
     def get_user_favorites(self, **args):
@@ -955,8 +955,6 @@ class EasyTwitterAPI:
         df = self.get_lists_of_user_full(list_type, **args)
         if df is None or len(df) == 0: return df
         if df['created_at'].max() < min_dt:
-            print(f"gadgag: {df['created_at'].max()}")
-
             self.activate_cache(False)
             _ = self.get_lists_ids_of_user(list_type=list_type, since=df['created_at'].max(), **args)
             self.activate_cache(cache)
