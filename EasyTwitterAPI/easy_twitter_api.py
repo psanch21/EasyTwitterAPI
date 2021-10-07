@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
-import twint
 from TwitterAPI import TwitterAPI
 from TwitterAPI import TwitterError
 from dateutil import parser
@@ -389,7 +388,7 @@ class EasyTwitterAPI:
         print(f'{count_total_new} new events for user {user_id}')
         if update_many:
             if endpoint == 'statuses/user_timeline':
-                self.db.insert_many_statuses(tweet_clean_list, id_str_user=user_id_str)
+                self.db.insert_many_statuses_user(tweet_clean_list, id_str_user=user_id_str)
             else:
                 self.db.insert_many_favourites(tweet_clean_list, id_str_user=user_id_str)
 
@@ -409,6 +408,76 @@ class EasyTwitterAPI:
             return df[df['timestamp'] > since.timestamp()]
         else:
             return df
+
+    def get_tweets(self, id_str_list, **args):
+        assert all([isinstance(id_, str) for id_ in id_str_list])
+
+        preprocess = args['preprocess'] if 'preprocess' in args else False
+        update_many = args['update_many'] if 'update_many' in args else True
+
+        endpoint = f'statuses/lookup'
+        df = self.db.load_statuses(tweet_id_str_list=id_str_list,
+                                   filter_={},
+                                   return_as='df')
+
+        print(f'Scraping  {len(id_str_list)} entries using {endpoint}')
+
+        n_tweets = len(df) if df is not None else 0
+
+        if self._cache and n_tweets >= len(id_str_list):
+            # df = utools.create_df_from_cleaned_tweet_list(tweet_collection.find({}))
+
+            print(f'Getting {len(id_str_list)}  tweets from cache')
+            return df
+
+        if df is not None and len(df) > 0:
+            id_str_list_to_collect = utools.list_substract(id_str_list, list(df['id_str'].values))
+        else:
+            id_str_list_to_collect = id_str_list
+
+        n_batches = int(np.ceil(len(id_str_list_to_collect) / 100))
+        count_total = 0
+
+        tweet_clean_list = []
+
+        for i in range(n_batches):
+            count = 0
+            id_str_list_to_collect_i = id_str_list_to_collect[i * 100:(i + 1) * 100]
+
+            query = {'id': ','.join(id_str_list_to_collect_i), 'tweet_mode': 'extended'}
+
+            r, success = self.try_request(endpoint, query)
+            if not success: return None
+
+            for i, tweet in enumerate(r):
+                count_total += 1
+                count += 1
+                tweet_clean = utools.clean_tweet_no_timeline(tweet, preprocess)
+                if not update_many:
+                    _ = self.db.update_statuses(filter_={'id_str': tweet['id_str']},
+                                                data=tweet_clean)
+
+
+                else:
+
+                    tweet_clean = utools.clean_tweet_no_timeline(tweet, preprocess)
+                    tweet_clean_list.append(tweet_clean)
+
+                if len(id_str_list_to_collect) == count_total:
+                    break
+
+            print(f'{count} tweets retrieved\n\n')
+        print(f'{count_total} new events')
+        if update_many:
+            self.db.insert_many_statuses(tweet_clean_list)
+
+        df = self.db.load_statuses(tweet_id_str_list=id_str_list,
+                                   filter_={},
+                                   return_as='df')
+
+        print(f'{len(df)} tweets')
+
+        return df
 
     # %% User Favorites
     def get_user_favorites(self, **args):
@@ -1032,91 +1101,14 @@ class EasyTwitterAPI:
         return data['member_list']
 
     def search_replies_to(self, **args):
-
-        count = args['count'] if 'count' in args else 1000
-
-        since = args['since'] if 'since' in args else parser.parse('2006-01-01 00:00:00')
-
-        if 'screen_name' in args:
-            user = self.get_user(screen_name=args['screen_name'])
-        elif 'user_id' in args:
-            user = self.get_user(user_id=args['user_id'])
-        elif 'user' in args:
-            user = args['user']
-
-        screen_name, user_id_str = user['screen_name'], user['id_str']
-
-        print(f'Scraping replies to {screen_name}')
-
-        tweet_collection = self.db[f'{REPLYTO_C}{user_id_str}']
-
-        from_user = None
-        if 'from_screen_name' in args:
-            from_user = self.get_user(screen_name=args['from_screen_name'])
-        elif 'from_user_id' in args:
-            from_user = self.get_user(user_id=args['from_user_id'])
-        elif 'from_user' in args:
-            from_user = args['from_user']
-
-        if from_user:
-            n_tweets = tweet_collection.count_documents({'user_id_str': from_user['id_str']})
-        else:
-            n_tweets = tweet_collection.count_documents({})
-
-        if self._cache and n_tweets > 0:
-            if from_user:
-                tweet_list = list(tweet_collection.find({'user_id_str': from_user['id_str']}))
-            else:
-                tweet_list = list(tweet_collection.find({}))
-            print(f'Getting replies to  {screen_name} from cache')
-            print(f'{len(tweet_list)} events for user {screen_name}')
-
-            df = utools.create_df_from_tweet_list_twint(tweet_list)
-            return df[df['timestamp'] > since.timestamp()]
-
-        count_total = 0
-        count_total_new = 0
-
-        query = f"to:{screen_name} from:{from_user['screen_name']}" if from_user else f'to:{screen_name}'
-
-        c = twint.Config()
-        c.Search = query
-        c.Hide_output = False
-        c.User_full = False
-        c.Limit = count
-        c.Since = since.strftime('%Y-%m-%d %H:%M:%S')
-        c.Store_object = True
-        twint.run.Search(c)
-
-        tweets = twint.output.tweets_list
-
-        for t in tweets:
-            tweet = t.__dict__
-            count_total += 1
-            tmp = tweet_collection.find_one_and_update({'id_str': tweet['id_str']},
-                                                       {"$set": tweet},
-                                                       upsert=True)
-            if tmp is None: count_total_new += 1
-
-        print(f'{count_total} tweets retrieved\n\n')
-
-        if from_user:
-            tweet_list = list(tweet_collection.find({'user_id_str': from_user['id_str']}))
-        else:
-            tweet_list = list(tweet_collection.find({}))
-
-        print(f'{count_total_new} new events for user {user_id_str}')
-        print(f'{len(tweet_list)} events for user {user_id_str}')
-
-        df = utools.create_df_from_tweet_list_twint(tweet_list)
-        return df[df['timestamp'] > since.timestamp()]
-
-    def search_replies_to_2(self, **args):
         '''
         This method users the Twitter API
         :param args:
         :return:
         '''
+
+        # TODO: Not Implemented
+        raise NotImplementedError
 
         day = timedelta(days=1)
 
@@ -1202,6 +1194,8 @@ class EasyTwitterAPI:
         return df
 
     def search_premium(self, query, **args):
+        # TODO: Not Implemented
+        raise NotImplementedError
 
         day = timedelta(days=1)
 

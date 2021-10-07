@@ -54,19 +54,12 @@ def list_substract(l, l_substact):
 def tweet_type(tweet):
     if 'quoted_status' in tweet and isinstance(tweet['quoted_status'], dict):
         return Cte.QTWEET
-    if 'retweeted_status' not in tweet:
-        if tweet['in_reply_to_user_id_str'] is None:
-            return Cte.TWEET
-        else:
-            return Cte.ANSWER
-
-    elif isinstance(tweet['retweeted_status'], dict) and len(tweet['retweeted_status']) > 0:
+    elif 'retweeted_status' in tweet and isinstance(tweet['retweeted_status'], dict):
         return Cte.RETWEET
+    elif  tweet['in_reply_to_user_id_str'] is not None:
+        return Cte.ANSWER
     else:
-        if tweet['in_reply_to_user_id_str'] is None:
-            return Cte.TWEET
-        else:
-            return Cte.ANSWER
+        return Cte.TWEET
 
 
 def tweet_type_twint(tweet):
@@ -79,26 +72,34 @@ def tweet_type_twint(tweet):
 
 def tweet_creator(tweet):
     output = {}
-    if 'quoted_status' in tweet and isinstance(tweet['quoted_status'], dict):
-        qtweet = tweet['quoted_status']
-        output['id_str'] = qtweet['user']['id_str']
-        output['id'] = int(qtweet['user']['id'])
-        output['screen_name'] = qtweet['user']['screen_name']
-        return output
 
-    if 'retweeted_status' not in tweet:
-        output['id_str'] = tweet['user']['id_str']
-        output['id'] = int(tweet['user']['id'])
-        output['screen_name'] = tweet['user']['screen_name']
-    elif isinstance(tweet['retweeted_status'], dict) and len(tweet['retweeted_status']) > 0:
-        output['id_str'] = tweet['retweeted_status']['user']['id_str']
-        output['id'] = int(tweet['retweeted_status']['user']['id'])
-        output['screen_name'] = tweet['retweeted_status']['user']['screen_name']
+    type_ = tweet_type(tweet)
+    if type_ == Cte.TWEET:
+        output['tweet_user_id_str'] = tweet['user']['id_str']
+        output['tweet_user_id'] = int(tweet['user']['id'])
+        output['tweet_user_screen_name'] = tweet['user']['screen_name']
+    elif type_ == Cte.RETWEET:
+        output['tweet_user_id_str_interaction'] = tweet['retweeted_status']['user']['id_str']
+        output['tweet_user_id_interaction'] = int(tweet['retweeted_status']['user']['id'])
+        output['tweet_user_screen_name_interaction'] = tweet['retweeted_status']['user']['screen_name']
+    elif type_ == Cte.QTWEET:
+        qtweet = tweet['quoted_status']
+        output['tweet_user_id_str_interaction'] = qtweet['user']['id_str']
+        output['tweet_user_id_interaction'] = int(qtweet['user']['id'])
+        output['tweet_user_screen_name_interaction'] = qtweet['user']['screen_name']
+    elif type_ == Cte.ANSWER:
+        output['tweet_user_id_str'] = tweet['user']['id_str']
+        output['tweet_user_id'] = int(tweet['user']['id'])
+        output['tweet_user_screen_name'] = tweet['user']['screen_name']
+
+        output['tweet_user_id_str_interaction'] = tweet['in_reply_to_user_id_str']
+        output['tweet_user_id_interaction'] = int(tweet['in_reply_to_user_id'])
+        output['tweet_user_screen_name_interaction'] = tweet['in_reply_to_screen_name']
     else:
-        output['id_str'] = tweet['user']['id_str']
-        output['id'] = int(tweet['user']['id'])
-        output['screen_name'] = tweet['user']['screen_name']
+        raise NotImplementedError
+
     return output
+
 
 
 def create_df_from_tweet_list(tweet_list):
@@ -182,26 +183,54 @@ def create_df_from_user_list(user_list, drop=True):
 
     return df
 
-
-def clean_tweet(tweet, preprocess, user_id_str):
+def clean_tweet_no_timeline(tweet, preprocess):
     tweet_clean = {key: tweet[key] for key in
                    ['created_at', 'id', 'id_str', 'in_reply_to_user_id', 'in_reply_to_user_id_str',
-                    'in_reply_to_screen_name',
+                    'in_reply_to_screen_name', 'in_reply_to_status_id_str',
                     'retweet_count', 'favorite_count', 'lang']}
-    if 'full_text' in tweet.keys():
+
+    if 'type' not in tweet.keys(): tweet_clean['type'] = tweet_type(tweet)
+
+    tweet_clean['text_interaction'] = None
+    tweet_clean['text'] = None
+
+    tweet_clean['tweet_user_id_str'] = None
+    tweet_clean['tweet_user_id'] = None
+    tweet_clean['tweet_user_screen_name'] = None
+
+    tweet_clean['tweet_user_id_str_interaction'] = None
+    tweet_clean['tweet_user_id_interaction'] = None
+    tweet_clean['tweet_user_screen_name_interaction'] = None
+
+    creator = tweet_creator(tweet)
+    tweet_clean.update(creator)
+
+    if tweet_clean['type'] in [Cte.RETWEET]:
+        tweet_clean['text_interaction'] = tweet['retweeted_status']['full_text']
+
+
+    elif tweet_clean['type'] in [Cte.ANSWER]:
         tweet_clean['text'] = tweet['full_text']
-    elif 'extended_tweet' in tweet.keys():
-        tweet_clean['text'] = tweet['extended_tweet']['full_text']
+        # TODO: tweet_clean['text_interaction']  in_reply_to_status_id_str
+
+    elif tweet_clean['type'] in [Cte.TWEET]:
+        tweet_clean['text'] = tweet['full_text']
+
+    elif tweet_clean['type'] in [Cte.QTWEET]:
+        tweet_clean['text'] = tweet['full_text']
+        tweet_clean['text_interaction'] =   tweet['quoted_status']['full_text']
     else:
-        tweet_clean['text'] = tweet['text']
+        raise NotImplementedError
+
+    # if 'full_text' in tweet.keys():
+    #     tweet_clean['text'] = tweet['full_text']
+    # elif 'extended_tweet' in tweet.keys():
+    #     tweet_clean['text'] = tweet['extended_tweet']['full_text']
+    # else:
+    #     tweet_clean['text'] = tweet['text']
     if 'quote_count' in tweet.keys(): tweet_clean['quote_count'] = tweet['quote_count']
     if 'reply_count' in tweet.keys(): tweet_clean['reply_count'] = tweet['reply_count']
     tweet_clean['datetime'] = datetime.fromtimestamp(parser.parse(tweet['created_at']).timestamp())
-    if 'type' not in tweet.keys(): tweet_clean['type'] = tweet_type(tweet)
-    if 'tweet_user_id' not in tweet.keys(): tweet_clean['tweet_user_id'] = tweet_creator(tweet)['id']
-    if 'tweet_user_id_str' not in tweet.keys(): tweet_clean['tweet_user_id_str'] = tweet_creator(tweet)['id_str']
-    if 'tweet_user_screen_name' not in tweet.keys(): tweet_clean['tweet_user_screen_name'] = tweet_creator(tweet)[
-        'screen_name']
 
     tweet_clean['timestamp'] = parser.parse(tweet['created_at']).timestamp()
 
@@ -209,11 +238,25 @@ def clean_tweet(tweet, preprocess, user_id_str):
         tweet_clean['text_processed'] = preprocess_text(tweet_clean['text'])
     else:
         tweet_clean['text_processed'] = None
-    text = tweetp.parse(tweet_clean['text'])
+
+    text = ''
+    if tweet_clean['text'] is not None:
+        text = tweet_clean['text']
+    if tweet_clean['text_interaction'] is not None:
+        text += ' ' + tweet_clean['text_interaction']
+
+    text = text.strip()
+    text = tweetp.parse(text)
     tweet_clean['emojis'] = min(length(text.emojis), 127)
     tweet_clean['hashtags'] = min(length(text.hashtags), 127)
     tweet_clean['urls'] = min(length(text.urls), 127)
     tweet_clean['mentions'] = min(length(text.mentions), 127)
+
+    return tweet_clean
+
+def clean_tweet(tweet, preprocess, user_id_str):
+    tweet_clean = clean_tweet_no_timeline(tweet, preprocess)
+
     tweet_clean['id_str_timeline'] = user_id_str
 
     return tweet_clean

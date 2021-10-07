@@ -16,6 +16,7 @@ class DBCte:
     USER_FOLL_C = f'{Cte.FOLLOWERS}_list'
     USER_C = 'user'
     TWEETS_U_C = 'tweets'
+    STATUSES = 'statuses'
     REPLYTO_C = 'replies_'
 
     TWEETS_V2 = 'tweets_v2'
@@ -58,10 +59,11 @@ class EasyTwitterDB:
         self.coll_tweets_names = [n for n in self.coll_names if 'tweets_' in n]
         self.coll_favs_names = [n for n in self.coll_names if 'favs_' in n]
 
-    def load(self, collection, filter_={}, find_one=False, return_as='cursor'):
+    def load(self, collection, filter_=None, find_one=False, return_as='cursor'):
         if collection not in self.collection_names():
             return None
 
+        if filter_ is None: filter_ = {}
         if find_one:
             data = self.db[collection].find_one(filter_)
             if isinstance(data, dict) and '_id' in data: del data['_id']
@@ -86,6 +88,7 @@ class EasyTwitterDB:
         return data
 
     def load_lists(self, filter_={}, find_one=False, return_as='cursor'):
+        # TODO:
         return self.load(collection=DBCte.LIST_C, filter_=filter_, find_one=find_one, return_as=return_as)
 
     def load_members_of_lists(self, filter_={}, find_one=False, return_as='cursor'):
@@ -102,6 +105,16 @@ class EasyTwitterDB:
 
         assert 'id_str_timeline' not in filter_, print(f"The filter is {filter_}")
         filter_.update({'id_str_timeline': user_id_str})
+        return self.load(collection=collection,
+                         filter_=filter_,
+                         find_one=find_one,
+                         return_as=return_as)
+
+    def load_statuses(self, tweet_id_str_list, filter_, find_one=False, return_as='cursor'):
+
+        collection = DBCte.STATUSES
+
+        filter_.update({'id_str': {'$in': tweet_id_str_list}})
         return self.load(collection=collection,
                          filter_=filter_,
                          find_one=find_one,
@@ -160,7 +173,7 @@ class EasyTwitterDB:
         try:
             self.db[DBCte.LIST_C].create_index("id_str", unique=True)
         except DuplicateKeyError:
-            print('Duplicate key! Removing duplicates (run again to create index)')
+            print('Duplicated key! Removing duplicates (run again to create index)')
 
             df = self.load_lists({}, return_as='df')
             df_g = df.groupby('id_str').count()
@@ -173,7 +186,7 @@ class EasyTwitterDB:
         try:
             self.db[DBCte.USER_C].create_index("id_str", unique=True)
         except DuplicateKeyError:
-            print('Duplicate key! Removing duplicates (run again to create index)')
+            print('Duplicated key! Removing duplicates (run again to create index)')
 
             df = self.load_users({}, return_as='df')
             df_g = df.groupby('id_str').count()
@@ -181,6 +194,12 @@ class EasyTwitterDB:
             id_str_list = list(df_g[cond].index)
             out = self.db[DBCte.USER_C].delete_many({'id_str': {'$in': id_str_list}})
             print(out)
+        print(f"Creating indexes for collection {DBCte.STATUSES}")
+        try:
+            self.db[DBCte.STATUSES].create_index("id_str", unique=True)
+        except DuplicateKeyError:
+            print('Duplicated key! WTF happened')
+
 
     # %% UPDATE METHODS
     def update_data(self, collection, filter_, data):
@@ -217,8 +236,14 @@ class EasyTwitterDB:
         collection = f'{DBCte.TWEETS_U_C}_{user_id_str[-1]}'
         filter_['id_str_timeline'] = data['id_str_timeline']
         return self.update_data(collection=collection, filter_=filter_, data=data)
+    def update_statuses(self, filter_, data):
+        collection = DBCte.STATUSES
+        return self.update_data(collection=collection, filter_=filter_, data=data)
 
-    def insert_many_statuses(self, data_list, id_str_user):
+    def insert_many_statuses(self, data_list):
+        return self.insert_many(DBCte.STATUSES, data_list)
+
+    def insert_many_statuses_user(self, data_list, id_str_user):
         return self._insert_many_activity(DBCte.TWEETS_U_C, data_list, id_str_user)
 
     def _insert_many_activity(self, activity_type, data_list, id_str_user):
