@@ -15,12 +15,6 @@ This is an ongoing project there are many functionalities (and documentation) to
 Download or clone this repo and from the command line execute: 
 
 ```
-pip install -r requirements.txt
-```
-
-or 
-
-```
 python setup.py install
 ```
 
@@ -70,14 +64,14 @@ scraper = EasyTwitterAPI(cred_file='credentials.json',
 
 
 #### Step 3: Get data from Twitter
-Now you are ready to get/scrape data from Twitter. The file ```test/test_all.py``` contains many examples of use. 
+Now you are ready to get/scrape data from Twitter. The file ```_demo.ipynb``` contains many examples of use. 
 Some of the methods you can call are
 
 ```
 # %% Get activity
-tweets = scraper.get_user_activity_limited(screen_name='yudapearl',  since=datetime.datetime.strptime('2000-05-30', '%Y-%m-%d'))
+tweets = scraper.get_user_activity_limited(screen_name='jack',  since=datetime.datetime.strptime('2000-05-30', '%Y-%m-%d'))
 # %% Get followees
-members = scraper.get_followees(screen_name='yudapearl', max_num=5000)
+members = scraper.get_followees(screen_name='jack', max_num=5000)
 ```
 
 
