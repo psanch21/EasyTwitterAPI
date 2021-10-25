@@ -82,11 +82,21 @@ def tweet_creator(tweet):
         output['tweet_user_id_str_interaction'] = tweet['retweeted_status']['user']['id_str']
         output['tweet_user_id_interaction'] = int(tweet['retweeted_status']['user']['id'])
         output['tweet_user_screen_name_interaction'] = tweet['retweeted_status']['user']['screen_name']
+
+        output['tweet_id_str_interaction'] =  tweet['retweeted_status']['id_str']
+
     elif type_ == Cte.QTWEET:
         qtweet = tweet['quoted_status']
         output['tweet_user_id_str_interaction'] = qtweet['user']['id_str']
         output['tweet_user_id_interaction'] = int(qtweet['user']['id'])
         output['tweet_user_screen_name_interaction'] = qtweet['user']['screen_name']
+
+        output['tweet_user_id_str'] = tweet['user']['id_str']
+        output['tweet_user_id'] = int(tweet['user']['id'])
+        output['tweet_user_screen_name'] = tweet['user']['screen_name']
+
+        output['tweet_id_str_interaction'] = qtweet['id_str']
+
     elif type_ == Cte.ANSWER:
         output['tweet_user_id_str'] = tweet['user']['id_str']
         output['tweet_user_id'] = int(tweet['user']['id'])
@@ -95,6 +105,8 @@ def tweet_creator(tweet):
         output['tweet_user_id_str_interaction'] = tweet['in_reply_to_user_id_str']
         output['tweet_user_id_interaction'] = int(tweet['in_reply_to_user_id'])
         output['tweet_user_screen_name_interaction'] = tweet['in_reply_to_screen_name']
+
+        output['tweet_id_str_interaction'] = tweet['in_reply_to_status_id_str']
     else:
         raise NotImplementedError
 

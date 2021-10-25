@@ -114,8 +114,19 @@ for _ in range(2):
         # tweets.append(clean_tweet(item, False,'123456'))
 
         i += 1
+# %%
 
+for t in tweets:
+    if 'quoted_tweet' in t:
+        print(t)
 
+# %%
+
+for t in tweets:
+    if 'Floki' in t['full_text']:
+        for key, value in t.items():
+            print(f"{key}")
+            print(f"\t{value}")
 
 # %%
 

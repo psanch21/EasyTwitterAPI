@@ -61,7 +61,12 @@ class EasyTwitterDB:
 
     def load(self, collection, filter_=None, find_one=False, return_as='cursor'):
         if collection not in self.collection_names():
-            return None
+            if return_as == 'df':
+                return pd.DataFrame()
+            elif return_as == 'list':
+                return []
+            else:
+                return None
 
         if filter_ is None: filter_ = {}
         if find_one:
