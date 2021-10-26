@@ -10,6 +10,16 @@ packages [TwitterAPI](https://github.com/geduldig/TwitterAPI) and
 
 This is an ongoing project there are many functionalities (and documentation) to be added. Thit goes without saying, but contributions are highly appreciated.
 
+
+## Installation
+Download or clone this repo and from the command line execute:
+
+```
+conda create --name easy_twitter_api python=3.9 --no-default-packages
+conda activate easy_twitter_api 
+```
+
+
 ## Installation
 
 Download or clone this repo and from the command line execute: 
